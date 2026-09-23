@@ -251,6 +251,10 @@ function rawHeight(d) {
   const ridge = clamp(1 - Math.abs(fbm(d.x * f2 + 7, d.y * f2, d.z * f2 - 5, 3) * 2.4), 0, 1);
   return R + e * 1.2 + Math.pow(ridge, 3) * 1.9 * smooth(0.1, 0.3, e);
 }
+// Grass shade and forest clusters are terrain features too: same NZ rule as rawHeight,
+// so a meadow or a forest keeps its R=10 size in world units.
+const grassNoise = d => fbm(d.x * 6 * NZ, d.y * 6 * NZ, d.z * 6 * NZ, 2);
+const forestNoise = d => fbm(d.x * 4 * NZ + 11, d.y * 4 * NZ, d.z * 4 * NZ, 3);
 function heightAt(d) {
   let h = rawHeight(d);
   for (const c of CITIES) {
@@ -393,7 +397,7 @@ const GREENS = ['#5ccf5a', '#3fb35a', '#86dc4e', '#2f9e5b'];
     if (a < -0.3) col.set('#2a63b8');
     else if (a < 0) col.set('#8fe3d6');
     else if (a < 0.1) col.set('#ffe29a');
-    else if (a < 0.95) col.set(fbm(d.x * 6, d.y * 6, d.z * 6, 2) > 0 ? '#7bd85a' : '#55c15a');
+    else if (a < 0.95) col.set(grassNoise(d) > 0 ? '#7bd85a' : '#55c15a');
     else if (a < 1.6) col.set(a < 1.25 ? '#c0916a' : '#9b8fb8');
     else col.set('#ffffff');
     pos.setXYZ(i, d.x * h, d.y * h, d.z * h);
@@ -548,11 +552,6 @@ const WHEELS = mergeGeometries([[-1, -1], [1, -1], [-1, 1], [1, 1]].map(([sx, sz
   new THREE.CylinderGeometry(0.02, 0.02, 0.016, 10).rotateZ(Math.PI / 2).translate(sx * 0.044, 0.02, sz * 0.055)));
 const CAR_BODY = new THREE.BoxGeometry(0.085, 0.04, 0.17).translate(0, 0.04, 0);
 const CAR_CAB = new THREE.BoxGeometry(0.07, 0.038, 0.08).translate(0, 0.078, -0.012);
-function makeCar(color) {
-  const g = new THREE.Group();
-  g.add(inked(CAR_BODY, toon(color), 0.01), inked(CAR_CAB, toon('#cdefff'), 0.01), inked(WHEELS, toon('#26233a'), 0.006));
-  return g;
-}
 
 const vehicles = { car: [], plane: [], boat: [], sat: [] };
 const movers = [];   // functions (t, dt) => void
@@ -581,17 +580,14 @@ function initCarInstancing() {
   // Body mesh: white base material so instanceColor (set per car in addCarInstance)
   // shows through as the true car colour.
   carInstances.bodies.mesh = new THREE.InstancedMesh(CAR_BODY, toon('#ffffff'), MAX_CARS);
-  carInstances.bodies.mesh.castShadow = true;
   scene.add(carInstances.bodies.mesh);
 
   // Shared cab mesh (all cabins are light blue)
   carInstances.cabs.mesh = new THREE.InstancedMesh(CAR_CAB, toon('#cdefff'), MAX_CARS);
-  carInstances.cabs.mesh.castShadow = true;
   scene.add(carInstances.cabs.mesh);
 
   // Shared wheels mesh (all wheels are dark)
   carInstances.wheels.mesh = new THREE.InstancedMesh(WHEELS, toon('#26233a'), MAX_CARS);
-  carInstances.wheels.mesh.castShadow = true;
   scene.add(carInstances.wheels.mesh);
 
   // Ink outlines, one shared mesh per part (outline colour is constant).
@@ -606,6 +602,9 @@ function initCarInstancing() {
 }
 
 function addCarInstance(color) {
+  if (carInstances.bodies.count >= MAX_CARS) {
+    throw new Error(`addCarInstance: car pool full (MAX_CARS = ${MAX_CARS}). Raise MAX_CARS or spawn fewer cars.`);
+  }
   // Allocate instance indices (all parts grow in lockstep, one car at a time).
   const bodyIndex = carInstances.bodies.count;
   const cabIndex = carInstances.cabs.count;
@@ -767,7 +766,7 @@ CITIES.forEach(buildCity);
 for (let k = 0, placed = 0; k < 9000 && placed < 1700; k++) {
   const d = randomDir(), h = heightAt(d), a = h - R;
   if (a < 0.12 || a > 1.05 || nearCity(d, 0.02)) continue;
-  if (fbm(d.x * 4 + 11, d.y * 4, d.z * 4, 3) < -0.03) continue;   // clustered forests
+  if (forestNoise(d) < -0.03) continue;   // clustered forests
   addTree(world, d.clone().multiplyScalar(h - 0.02), d, rr(0.7, 1.3));
   placed++;
 }
@@ -1600,9 +1599,10 @@ LW.frame = frame;
 LW.R = R;               // expose for tests (planet-v2 AC1)
 LW.NZ = NZ;
 LW.rawHeight = rawHeight;
+LW.grassNoise = grassNoise;   // expose for tests (planet-v2 AC1: meadows and forests keep their size)
+LW.forestNoise = forestNoise;
 LW.heightAt = heightAt;   // expose for tests (planet-v2 AC3/AC4: the actual rendered terrain height, post city-flattening)
 LW.CITIES = CITIES;
-LW.makeCar = makeCar;   // expose for tests
 LW.addCarInstance = addCarInstance;   // expose for tests
 LW.setCarsVisible = setCarsVisible;   // expose for tests: measure traffic's own draw-call cost
 LW.controls = controls;   // expose for tests (planet-v2 AC3: zoom limits)

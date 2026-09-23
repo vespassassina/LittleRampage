@@ -2,6 +2,57 @@
 
 Newest first.
 
+## 2026-09-23 — P1 closed; review follow-ups triaged
+
+- **Reviewer: CLOSE with follow-ups.** All 8 ACs checked. Nothing blocked the merge.
+- **Meadows and forests now scale with NZ, like the mountains.** The grass-shade noise
+  (freq 6) and the forest-cluster noise (freq 4) still ran at R=10 frequency, so at R=15
+  meadows and forests were 1.5× wider than before in world units. The spec says terrain
+  features keep their size; these are terrain features. It matters now, before P2 puts
+  ~3800 trees through the same forest mask: unscaled, forests would be fewer, bigger blobs.
+  Cost: two frequencies, pulled into `grassNoise(d)` and `forestNoise(d)`. The AC1 check
+  now also samples both at d/NZ against R=10 values; without NZ all 4 samples miss by
+  0.03 to 0.26, against a 0.01 tolerance. Forest positions and the seeded layout after
+  them move. Tests use live positions, so nothing else needed changing.
+- **Done now, cheap and low-risk:** dropped the weak first AC5 check (it added 5 cars at
+  the planet centre and left them in the traffic list; the draw-call delta check is the
+  real one). Removed `makeCar` (no caller, no test uses it). Removed `castShadow` on the
+  three car meshes (shadows are off; turned on, they would add 3 calls to traffic).
+  `addCarInstance` throws a clear error when the pool of 200 is full. The Courier balance
+  check measures leg distance at `G.alt`, as the game does, not at R. Stale comments and
+  line references in `tests/planet.js` fixed. `docs/HANDOFF.md` deleted: it described F1.
+- **Deferred to P2, in the AC 7 task:** `tests/frame-cost.js` records numbers and always
+  passes (2 of the 56 checks assert nothing). It also leaves quality on Low and a wrong
+  canvas size behind. And `performance.now()` around `LW.frame()` times CPU submit, not
+  the frame. P2's AC 7 task now says what a real check needs.
+- **Suite:** 56/56 (57 minus the dropped check), no console errors, fresh headless Chromium.
+
+## 2026-09-23 — Catching up the decision trail for P1
+
+Written at sprint close, not at the time. Five P1 commits changed behaviour without an
+entry here. This records what they decided, from their commit messages and the code.
+
+- **R = 15, terrain frequency × NZ (f554707).** NZ = R / 10 scales the two terrain noise
+  frequencies, so a mountain keeps its width in world units. Height terms stay absolute.
+  The AC1 check samples `rawHeight` at d/NZ against heights measured on the R=10 code:
+  -0.2601, -0.1542, 0.0802, 2.1636 above sea.
+- **All 5 cities moved (07c7d93).** At R=15 two of the old three sat in the sea (raw height
+  -0.47 and +0.01 above sea); the plateau hid it. New directions were searched for land
+  with a margin (0.26 to 1.2 above sea) and spread for separation (1.5 to 3.1 rad apart).
+  Sizes 3.4, 3.0, 2.8, 2.6, 2.4.
+- **Cars instanced (1034912, f68678a).** One `InstancedMesh` per part (body, cab, wheels)
+  plus one ink hull each: 6 draw calls for all traffic. The first version used one body
+  mesh per colour, up to 24 calls; fixed with per-instance colour. The AC5 check measures
+  traffic's own calls (hide cars, show cars, take the delta), not the scene total.
+- **Chase camera stand-in (fc0583a).** Instanced cars have no `Object3D`. Each car keeps one
+  that is never added to the scene, synced to its instance matrix every frame, so Ride a
+  car works as before.
+- **Play buttons moved top-right (fc0583a). Not requested.** The coder moved Play Sky Courier
+  and Play Sky Raid out of the bottom-left bar. Kept for now; Diego to confirm or revert.
+- **Correction to the AC3/AC4 entry below.** It says the atmosphere is `R + absolute`. The
+  code is `R * 1.2` (18 at R=15). That is right by the spec's rule: the halo is a distance
+  from the centre, so it scales with R. The code is fine; the wording was wrong.
+
 ## 2026-09-23 — P1 final: quality auto-switch tests made behavioural
 
 - **Rewrote quality auto-switch tests to be behavioral, not structural.** The F1 auto-switch tests only checked that the API exists and returns the right types; they didn't actually feed frame times and assert that quality changed. P1 task required tightening these into real behavioral checks: feed slow frame times (>25ms avg) after 3+ seconds elapsed, and assert `LW.quality.get()` switches to 'low'; feed fast frame times and assert it stays/returns to 'high'.

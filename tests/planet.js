@@ -1,12 +1,6 @@
 /**
- * Planet v2 tests (AC 5: instanced traffic)
- *
- * AC5: Cars are instanced: traffic costs at most 10 draw calls, however many cars there are.
- *
- * Test contract:
- * - Cars are created and placed on city ring roads during world initialization
- * - With instancing, adding more cars should not increase draw calls linearly
- * - Draw calls for traffic should stay under a fixed threshold regardless of car count
+ * Planet v2 tests (docs/specs/planet-v2.md, AC 1-5).
+ * AC 6 (destructible scenery) and AC 7 (frame-cost budget) land in Sprint P2.
  */
 
 LW_TESTS.push({
@@ -28,8 +22,8 @@ LW_TESTS.push({
     // the frequency scale-up - samples the "same" bump of terrain that a
     // reference run at R=10, NZ=1 would have sampled, and its absolute
     // height should come out the same (this is the reference measurement
-    // recorded from the actual R=10 code before the change; see
-    // docs/DECISIONS.md and the coder's report for the raw before/after run).
+    // recorded from the actual R=10 code before the change; see the
+    // P1 catch-up entry in docs/DECISIONS.md).
     if (LW.NZ !== LW.R / 10) throw new Error(`Expected NZ = R/10, got ${LW.NZ} for R=${LW.R}`);
     const samples = [
       { x: 0.30, y: 0.60, z: 0.74 },
@@ -64,6 +58,23 @@ LW_TESTS.push({
         throw new Error(`City ${i} block size changed: expected Lr=${expectedLr[i]}, got ${c.Lr}`);
       }
     });
+
+    // Meadows (grass shade) and forest clusters follow the same NZ rule as the
+    // mountains: sampled at d/NZ they must match the R=10 noise values.
+    // Values measured from the R=10 code (grass freq 6, forest freq 4, no NZ).
+    const baselineGrass = [0.0762, 0.0497, 0.2621, -0.2183];
+    const baselineForest = [0.1065, -0.0076, -0.0524, -0.0211];
+    for (let i = 0; i < samples.length; i++) {
+      const d = samples[i];
+      const dScaled = { x: d.x / LW.NZ, y: d.y / LW.NZ, z: d.z / LW.NZ };
+      const g = LW.grassNoise(dScaled), f = LW.forestNoise(dScaled);
+      if (Math.abs(g - baselineGrass[i]) > 0.01) {
+        throw new Error(`Meadow size drifted at sample ${i}: grass noise ${g.toFixed(4)}, expected ${baselineGrass[i]} (R=10 baseline). Is grassNoise scaled by NZ?`);
+      }
+      if (Math.abs(f - baselineForest[i]) > 0.01) {
+        throw new Error(`Forest size drifted at sample ${i}: forest noise ${f.toFixed(4)}, expected ${baselineForest[i]} (R=10 baseline). Is forestNoise scaled by NZ?`);
+      }
+    }
 
     return true;
   }
@@ -183,8 +194,8 @@ LW_TESTS.push({
   name: 'planet: orbit camera never goes inside terrain or buildings (AC 3, 200 points)',
   run(LW) {
     // AC3: "...the camera never goes inside terrain or buildings (sampled at 200
-    // random points)." Drive the actual frame() clamp (index.html's `floor` logic in
-    // orbit mode, lines ~1551-1561): drop the camera just above sea level at a random
+    // random points)." Drive the actual frame() clamp (the `floor` logic in frame()'s
+    // orbit mode branch): drop the camera just above sea level at a random
     // direction - almost certainly under the local terrain or a building - and check
     // the real per-frame clamp pushed it back out, the same way it does live.
     LW.games.quit();   // make sure we're in orbit mode, not mid-game
@@ -196,7 +207,7 @@ LW_TESTS.push({
       LW.frame(1 / 60);
       const dist = LW.camera.position.length();
 
-      // Mirror index.html's own orbit-mode clamp (frame(), lines ~1556-1560) exactly,
+      // Mirror index.html's own orbit-mode clamp (frame(), `let floor = ...`) exactly,
       // rather than re-deriving it, so this checks the real floor the live code uses:
       // terrain (post city-flattening) plus a margin, raised further near a city to
       // clear its tallest building.
@@ -263,52 +274,6 @@ LW_TESTS.push({
         throw new Error(`Balloon ${i} can dip to ${low.toFixed(2)}, which does not clear the tallest mountain (${maxHeight.toFixed(2)})`);
       }
     });
-    return true;
-  }
-});
-
-LW_TESTS.push({
-  name: 'planet: cars are instanced (AC 5)',
-  run(LW) {
-    // Verify cars exist in the scene
-    const initialCarCount = LW.vehicles.car.length;
-    if (initialCarCount === 0) {
-      throw new Error('No cars spawned in the world');
-    }
-
-    // Render a frame with baseline car count and measure draw calls
-    LW.frame(1 / 60);
-    const callsWithBaseline = LW.renderer.info.render.calls;
-
-    // Now spawn many more cars programmatically to test instancing.
-    // With instancing, adding cars should not increase draw calls significantly.
-    const before = callsWithBaseline;
-
-    // Add 5 more cars using the same mechanism as buildCity
-    for (let i = 0; i < 5; i++) {
-      const color = LW.PALETTE[i % LW.PALETTE.length];
-      const carDesc = LW.addCarInstance(color);
-      LW.vehicles.car.push(carDesc);
-    }
-
-    // Render with increased car count
-    LW.frame(1 / 60);
-    const callsWithMore = LW.renderer.info.render.calls;
-
-    // With instancing, adding 5 cars should add very few draw calls (ideally 0)
-    // Without instancing, adding 5 cars would add ~30 draw calls (5 cars × ~6 calls per car)
-    const callsAdded = callsWithMore - before;
-
-    // If properly instanced, callsAdded should be <= 2 (maybe a rounding artifact)
-    // If not instanced, callsAdded would be >= 20
-    if (callsAdded > 10) {
-      throw new Error(
-        `Cars not properly instanced: adding 5 cars added ${callsAdded} draw calls. ` +
-        `Expected <= 10 with instancing, got ${callsAdded} ` +
-        `(before: ${before}, after: ${callsWithMore})`
-      );
-    }
-
     return true;
   }
 });

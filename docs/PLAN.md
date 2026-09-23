@@ -46,7 +46,7 @@ Epics are grouped by game, not by order; the milestone tag on each sprint says w
 
 ## Epic: Planet v2 ([spec](specs/planet-v2.md)) — milestone 1
 
-### Sprint P1: bigger and still fast
+### Sprint P1: bigger and still fast, done 2026-09-23
 - [x] Measure and record the frame-cost baseline, desktop and phone (AC 7)
 - [x] Instanced cars, same look, same routes (AC 5)
 - [x] R = 15, terrain frequency scaled, heights kept (AC 1)
@@ -54,11 +54,19 @@ Epics are grouped by game, not by order; the milestone tag on each sprint says w
 - [x] Camera limits, start view, orbits, moon, atmosphere scaled (AC 3, 4)
 - [x] Courier and Raid checks pass (AC 8)
 - [x] Quality auto-switch checks made behavioural: feed slow frame times, expect Low; fast, expect High (F1 review)
+- [x] Review follow-ups: meadows and forests scaled by NZ, dead car code removed, car pool guard, decision trail caught up
 
 ### Sprint P2: fill it and make it breakable
-- [ ] More hamlets, trees, boats, planes, balloons, satellites, clouds by area (spec rules)
+- [ ] More hamlets, trees, boats, planes, balloons, satellites, clouds by area (spec rules).
+  Trees go through `forestNoise`, already scaled by NZ.
 - [ ] Destructible scenery: per-building, house, tree ranges in the batches; destroy and restore (AC 6)
-- [ ] Frame-cost check at full view (AC 7)
+- [ ] Frame-cost check at full view (AC 7). Replace the two record-only checks in
+  `tests/frame-cost.js` (they always pass). From the start view: assert desktop High under
+  16 ms and phone emulation Low under 33 ms. Time whole frames, GPU included (rAF-timed run,
+  or `gl.finish()` before the clock stops), not `LW.frame()` submit time. Real 4× CPU throttle
+  via CDP in a Playwright run, not a ×4 estimate; record the numbers in DECISIONS. Measure on
+  a real GPU: headless swiftshader times are not frame times. Save and restore quality,
+  pixel ratio and canvas size after the check.
 
 ## Epic: Kaiju ([spec](specs/kaiju.md)) — milestone 3
 

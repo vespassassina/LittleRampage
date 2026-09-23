@@ -100,7 +100,7 @@ LW_TESTS.push({
       const timeBefore = G.time;
       G.p.copy(G.town.dir);   // teleport onto the current target (same trick the delivery test above uses)
       LW.frame(1 / 60);       // one frame: delivery fires, newLeg() picks the next target and grants its bonus
-      const arcDist = fromDir.angleTo(G.town.dir) * LW.R;
+      const arcDist = fromDir.angleTo(G.town.dir) * G.alt;   // the game flies at G.alt, not R
       const bonus = G.time - timeBefore + 1 / 60;
       const cruiseFlightTime = arcDist / LW.SPEED;
 

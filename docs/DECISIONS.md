@@ -2,6 +2,30 @@
 
 Newest first.
 
+## 2026-09-23 — quitGame() no longer resets camera position, only mode/spin
+
+- **Root cause of a regression in "planet: orbit camera never goes inside terrain or
+  buildings (AC 3)".** That test calls `LW.games.quit()` to force orbit mode before
+  sampling. `TEST_MODE` starts with `controls.autoRotate = false`, and before the Orbit
+  button fix below, `quitGame()` -> `setMode('orbit')` never touched it. Once
+  `setMode('orbit')` started unconditionally calling `setSpin(true)`, quitting a game
+  also switched `autoRotate` on. The AC3 test then drove 200 `LW.frame()` calls with
+  auto-rotate live: each call nudged `camera.position` a hair off the sample direction
+  it had just set, while the test's expected `floor` was computed from the original
+  (pre-rotation) direction - occasionally landing the post-rotation position a few
+  millimetres under a floor computed for a very slightly different point on the terrain.
+  Not a camera-clamp bug; a shared-state leak between an unrelated UI change and a test
+  that assumed quitting a game left `autoRotate` untouched.
+- **Fix:** `setMode` takes a `resetView` param (default `true`, so the Orbit button and
+  Escape-from-sandbox keep resetting camera position/target/spin as before).
+  `quitGame()` now calls `setMode('orbit', false)` - leaving a game returns to sandbox
+  mode without snapping the camera or forcing auto-spin back on, which also matches
+  product intent better: quitting shouldn't yank the view if the user wasn't touching
+  the Orbit button. This supersedes this entry's predecessor below, which said quitting
+  a game "also snaps the camera back to the start framing" - it no longer does.
+- Verified 58/58 passing headless (Playwright, two consecutive full runs against the
+  random AC3 sampling) after the fix.
+
 ## 2026-09-23 — Sandbox UI polish: Orbit button now always resets the view
 
 - **Orbit click resets camera + target + spin unconditionally, not just on a mode change.**

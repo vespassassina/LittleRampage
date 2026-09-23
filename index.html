@@ -78,6 +78,23 @@
   #panel .row { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; }
   #p-go { background: #ffd93d; }
   @media (max-width: 600px) { #hud { top: 60px; flex-wrap: wrap; justify-content: center; width: calc(100vw - 32px); } #hud b { font-size: 22px; } }
+  #touch { position: fixed; inset: 0; z-index: 4; pointer-events: none; touch-action: none; }
+  #tjoy {
+    position: fixed; left: 24px; bottom: 24px; width: 120px; height: 120px; border-radius: 50%;
+    background: rgba(255,255,255,.25); border: 3px solid #000; box-shadow: 3px 3px 0 #000;
+    pointer-events: auto; touch-action: none;
+  }
+  #tjoy-knob {
+    position: absolute; left: 50%; top: 50%; width: 50px; height: 50px; margin: -25px 0 0 -25px;
+    border-radius: 50%; background: #ffd93d; border: 3px solid #000;
+  }
+  #tfire {
+    position: fixed; right: 28px; bottom: 28px; width: 84px; height: 84px; border-radius: 50%;
+    background: #ff6b6b; color: #fff; -webkit-text-stroke: 1px #000; border: 3px solid #000; box-shadow: 3px 3px 0 #000;
+    display: flex; align-items: center; justify-content: center; font-size: 20px; letter-spacing: 1px;
+    pointer-events: auto; touch-action: none; user-select: none; -webkit-user-select: none;
+  }
+  @media (max-width: 600px) { #tjoy { width: 96px; height: 96px; } #tfire { width: 70px; height: 70px; font-size: 16px; } }
 </style>
 <script type="importmap">
 { "imports": {
@@ -103,6 +120,10 @@
   <h2 id="p-title"></h2>
   <p id="p-text"></p>
   <div class="row"><button id="p-go"></button><button id="p-back">Back to sandbox</button></div>
+</div>
+<div id="touch" hidden>
+  <div id="tjoy"><div id="tjoy-knob"></div></div>
+  <div id="tfire" hidden>FIRE</div>
 </div>
 <div id="ui">
   <button id="play">Play Sky Courier</button>
@@ -963,6 +984,7 @@ function openGame(kind) {
   $('ui').hidden = true; $('hint').hidden = true; document.querySelector('h1').hidden = true;
   hud.el.hidden = true; hud.el.dataset.game = kind;
   panel(rules.title, rules.intro, 'Start!');
+  updateTouchVisibility();
 }
 function startRun() {
   resetPlane();
@@ -971,6 +993,7 @@ function startRun() {
   rules.start();
   hud.el.hidden = false; $('panel').hidden = true;
   G.running = true;
+  updateTouchVisibility();
 }
 function quitGame() {
   G.active = G.running = false; G.keys.clear();
@@ -978,6 +1001,7 @@ function quitGame() {
   player.visible = false;
   hud.el.hidden = true; $('panel').hidden = true; $('ui').hidden = false; $('hint').hidden = false; document.querySelector('h1').hidden = false;
   setMode('orbit');
+  updateTouchVisibility();
 }
 $('play').onclick = () => openGame('courier');
 $('play-raid').onclick = () => openGame('raid');
@@ -994,6 +1018,52 @@ addEventListener('keydown', e => {
 });
 addEventListener('keyup', e => { if (KEYMAP[e.key]) G.keys.delete(KEYMAP[e.key]); });
 addEventListener('blur', () => G.keys.clear());
+
+// --- Touch layer: joystick (#tjoy) + fire button (#tfire). Feeds the same G.keys set
+// KEYMAP populates above, so gameStep()/raid's fire step don't need to know the input source.
+const touchEl = $('touch'), joystick = $('tjoy'), joyKnob = $('tjoy-knob'), fireBtn = $('tfire');
+let touchForceShow = false;
+const STICK_DEADZONE = 0.3;
+function setStickKeys(x, y) {
+  const set = (name, on) => on ? G.keys.add(name) : G.keys.delete(name);
+  set('right', x > STICK_DEADZONE); set('left', x < -STICK_DEADZONE);
+  set('up', y > STICK_DEADZONE); set('down', y < -STICK_DEADZONE);
+}
+function setFireKey(pressed) { pressed ? G.keys.add('fire') : G.keys.delete('fire'); }
+function updateTouchVisibility() {
+  const coarse = window.matchMedia('(pointer: coarse)').matches;
+  const show = (coarse || touchForceShow) && G.active && G.running;
+  touchEl.hidden = !show;
+  fireBtn.hidden = !(show && G.kind === 'raid');
+}
+
+let joyTouchId = null, joyStartX = 0, joyStartY = 0;
+joystick.addEventListener('touchstart', e => {
+  const t = e.changedTouches[0];
+  joyTouchId = t.identifier; joyStartX = t.clientX; joyStartY = t.clientY;
+  e.preventDefault();
+}, { passive: false });
+joystick.addEventListener('touchmove', e => {
+  const t = [...e.changedTouches].find(t => t.identifier === joyTouchId);
+  if (!t) return;
+  const radius = joystick.clientWidth / 2;
+  const nx = clamp((t.clientX - joyStartX) / radius, -1, 1);
+  const ny = clamp((joyStartY - t.clientY) / radius, -1, 1);   // screen y grows downward; up drag = positive
+  setStickKeys(nx, ny);
+  joyKnob.style.transform = `translate(${nx * radius * 0.5}px, ${-ny * radius * 0.5}px)`;
+  e.preventDefault();
+}, { passive: false });
+function endJoyTouch(e) {
+  if (![...e.changedTouches].some(t => t.identifier === joyTouchId)) return;
+  joyTouchId = null;
+  setStickKeys(0, 0);
+  joyKnob.style.transform = '';
+}
+joystick.addEventListener('touchend', endJoyTouch);
+joystick.addEventListener('touchcancel', endJoyTouch);
+fireBtn.addEventListener('touchstart', e => { setFireKey(true); e.preventDefault(); }, { passive: false });
+fireBtn.addEventListener('touchend', e => { setFireKey(false); e.preventDefault(); });
+fireBtn.addEventListener('touchcancel', () => setFireKey(false));
 
 function gameStep(dt, t) {
   const k = G.keys;
@@ -1248,6 +1318,12 @@ LW.player = player;
 LW.games = { open: openGame, start: startRun, quit: quitGame };
 LW.courier = { openGame: () => openGame('courier'), startRun, quitGame, endRun: () => GAMES.courier.end(), rings, TOWNS, skyFloor };
 LW.raid = { balloons, shots, enemies, bursts, fire, shotWorld };
+LW.touch = {
+  el: touchEl, joystick, fireBtn,
+  setStick: setStickKeys, firePress: setFireKey,
+  get forceShow() { return touchForceShow; },
+  set forceShow(v) { touchForceShow = v; updateTouchVisibility(); },
+};
 
 addEventListener('resize', () => {
   camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix();

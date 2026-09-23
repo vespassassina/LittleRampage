@@ -42,6 +42,9 @@
   }
   @media (max-width: 600px) { h1 { font-size: 34px; } #hint { display: none; } button { font-size: 17px; padding: 5px 10px; } }
   [hidden] { display: none !important; }
+  #hud[data-game=raid] .courier, #hud[data-game=courier] .raid { display: none; }
+  #h-lives { color: #e8263b; }
+  #play-raid { background: #5ab0ff; color: #fff; -webkit-text-stroke: 1px #000; }
   #play { background: #ff6b6b; color: #fff; -webkit-text-stroke: 1px #000; }
   #hud { position: fixed; top: 14px; left: 50%; transform: translateX(-50%); z-index: 2; display: flex; gap: 8px; align-items: stretch; }
   #hud .box {
@@ -89,8 +92,10 @@
 <h1>Little Worlds!</h1>
 <div id="hint">Drag to orbit · scroll to zoom in close</div>
 <div id="hud" hidden>
-  <div class="box" id="h-timebox">TIME <b id="h-time">0</b></div>
-  <div class="box">DELIVERED <b id="h-score">0</b></div>
+  <div class="box courier" id="h-timebox">TIME <b id="h-time">0</b></div>
+  <div class="box courier">DELIVERED <b id="h-score">0</b></div>
+  <div class="box raid">LIVES <b id="h-lives"></b></div>
+  <div class="box raid">SCORE <b id="h-points">0</b></div>
   <div class="box target"><div id="h-arrow"></div><span id="h-town"></span><b id="h-dist"></b></div>
   <button id="h-quit">Quit</button>
 </div>
@@ -102,6 +107,7 @@
 </div>
 <div id="ui">
   <button id="play">Play Sky Courier</button>
+  <button id="play-raid">Play Sky Raid</button>
   <button data-mode="orbit" class="on">Orbit</button>
   <button data-mode="plane">Ride a plane</button>
   <button data-mode="car">Ride a car</button>
@@ -681,7 +687,7 @@ for (let p = 0; p < PLANES; p++) {
     plane.position.y = alt + Math.sin(t * 0.4 + ph) * 0.25;
     plane.userData.prop.rotation.z += dt * 40;
     emit += dt;
-    if (emit > 0.07) {
+    if (emit > 0.07 && plane.visible) {
       emit = 0;
       plane.updateWorldMatrix(true, false);
       const s = puffState[p * PUFFS_PER_PLANE + next];
@@ -711,15 +717,20 @@ function stripes(a, b) {
   for (let i = 0; i < 8; i++) { g.fillStyle = i % 2 ? a : b; g.fillRect(i * 8, 0, 8, 4); }
   const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t;
 }
+const ENVELOPE = new THREE.SphereGeometry(0.2, 16, 12);
+const SKIRT = new THREE.CylinderGeometry(0.1, 0.035, 0.1, 12).translate(0, -0.25, 0);
+const BASKET = new THREE.BoxGeometry(0.07, 0.05, 0.07).translate(0, -0.34, 0);
+function makeBalloon(color, tex = stripes(color, '#ffffff')) {
+  const b = new THREE.Group();
+  const env = inked(ENVELOPE, toon('#ffffff', tex), 0.015);
+  env.scale.y = 1.18;
+  b.add(env, inked(SKIRT, toon(color), 0.01), inked(BASKET, toon('#b07a4a'), 0.008));
+  return b;
+}
 for (let k = 0; k < 4; k++) {
   const pivot = new THREE.Object3D();
   pivot.quaternion.setFromUnitVectors(UP, randomDir());
-  const b = new THREE.Group();
-  const env = inked(new THREE.SphereGeometry(0.2, 16, 12), toon('#ffffff', stripes(PALETTE[k], '#ffffff')), 0.015);
-  env.scale.y = 1.18;
-  b.add(env,
-    inked(new THREE.CylinderGeometry(0.1, 0.035, 0.1, 12).translate(0, -0.25, 0), toon(PALETTE[k]), 0.01),
-    inked(new THREE.BoxGeometry(0.07, 0.05, 0.07).translate(0, -0.34, 0), toon('#b07a4a'), 0.008));
+  const b = makeBalloon(PALETTE[k]);
   const alt = rr(R + 2.2, R + 2.8);
   b.position.y = alt;
   pivot.add(b); scene.add(pivot);
@@ -869,17 +880,134 @@ function setMode(m) {
 document.querySelectorAll('[data-mode]').forEach(b => b.onclick = () => setMode(b.dataset.mode));
 addEventListener('keydown', e => { if (e.key === 'Escape') { if (G.active) quitGame(); else setMode('orbit'); } });
 
+// ---------- games: shared flight, camera, HUD and panels ----------
+// Sky Courier and Sky Raid fly the same plane; each game only adds its rules (GAMES below).
+const SPEED = 1.8, TURN = 1.7, CLIMB = 1.4, CEIL = R + 5;
+
+const player = new THREE.Group(), playerBody = makePlane('#ffd93d');
+const parcel = inked(new THREE.BoxGeometry(0.12, 0.08, 0.12).translate(0, 0.09, -0.06), toon('#c98b4f'), 0.01);
+playerBody.add(parcel);
+player.add(playerBody); player.visible = false; scene.add(player);   // banking lives on the body, so the chase camera stays level
+
+const G = { kind: null, active: false, running: false, p: new V3(), f: new V3(), alt: R + 3.2, bank: 0,
+  time: 0, score: 0, lives: 0, town: null, keys: new Set() };
+const GAMES = {};
+let rules = null;
+
+const $ = id => document.getElementById(id);
+const hud = { el: $('hud'), time: $('h-time'), timebox: $('h-timebox'), score: $('h-score'), town: $('h-town'),
+  dist: $('h-dist'), arrow: $('h-arrow'), lives: $('h-lives'), points: $('h-points') };
+const gdir = () => { const u = Math.random() * 2 - 1, t = Math.random() * 6.283, s = Math.sqrt(1 - u * u); return new V3(s * Math.cos(t), u, s * Math.sin(t)); };
+
+function loadBest(key) {
+  try { return Number(localStorage.getItem(key)) || 0; } catch { return 0; }   // storage blocked: best lives for this visit only
+}
+// Stores the score if it beats this game's best; true when it did.
+function recordBest() {
+  if (G.score <= rules.best) return false;
+  rules.best = G.score;
+  try { localStorage.setItem(rules.key, String(G.score)); } catch { /* not saved */ }
+  return true;
+}
+// Lowest safe altitude: above mountains and above the tallest tower of any city.
+function skyFloor(d) {
+  let f = Math.max(heightAt(d), R) + 0.6;
+  for (const c of CITIES) if (d.angleTo(c.dir) < c.cap + 0.08) f = Math.max(f, HC + c.maxH + 0.25);
+  return f;
+}
+// Moves a point `dist` along its great circle at radius `alt`, carrying the heading with it.
+const _axis = new V3();
+function advance(p, f, dist, alt) {
+  _axis.crossVectors(p, f).normalize();
+  const ang = dist / alt;
+  p.applyAxisAngle(_axis, ang).normalize();
+  f.applyAxisAngle(_axis, ang).addScaledVector(p, -f.dot(p)).normalize();
+}
+function pop(text) {
+  const el = $('pop'); el.textContent = text;
+  el.classList.remove('show'); void el.offsetWidth; el.classList.add('show');
+}
+function panel(title, text, go) {
+  $('p-title').textContent = title; $('p-text').textContent = text; $('p-go').textContent = go;
+  $('panel').hidden = false;
+}
+// Points the HUD arrow at a direction on the planet and shows how far it is.
+const _right = new V3();
+function pointAt(dir, label) {
+  _right.crossVectors(G.f, G.p);                              // screen-right when looking along the heading
+  hud.arrow.style.transform = `rotate(${Math.atan2(dir.dot(_right), dir.dot(G.f))}rad)`;
+  hud.town.textContent = label;
+  hud.dist.textContent = (G.p.angleTo(dir) * R).toFixed(1) + ' km';
+}
+function resetPlane() {
+  G.p.copy(CITIES[0].dir); G.f.copy(CITIES[0].t2); G.alt = skyFloor(G.p) + 0.4; G.bank = 0;
+}
+function openGame(kind) {
+  if (mode !== 'orbit') setMode('orbit');
+  rules = GAMES[kind];
+  G.kind = kind; G.active = true; G.running = false;
+  resetPlane();
+  parcel.visible = kind === 'courier';
+  player.visible = true; mode = 'game'; target = player; controls.enabled = false;
+  $('ui').hidden = true; $('hint').hidden = true; document.querySelector('h1').hidden = true;
+  hud.el.hidden = true; hud.el.dataset.game = kind;
+  panel(rules.title, rules.intro, 'Start!');
+}
+function startRun() {
+  resetPlane();
+  G.score = 0; G.keys.clear();
+  document.activeElement?.blur();   // or Space would press the button that had focus
+  rules.start();
+  hud.el.hidden = false; $('panel').hidden = true;
+  G.running = true;
+}
+function quitGame() {
+  G.active = G.running = false; G.keys.clear();
+  rules.stop();
+  player.visible = false;
+  hud.el.hidden = true; $('panel').hidden = true; $('ui').hidden = false; $('hint').hidden = false; document.querySelector('h1').hidden = false;
+  setMode('orbit');
+}
+$('play').onclick = () => openGame('courier');
+$('play-raid').onclick = () => openGame('raid');
+$('p-go').onclick = startRun;
+$('p-back').onclick = quitGame;
+$('h-quit').onclick = quitGame;
+
+const KEYMAP = { ArrowLeft: 'left', a: 'left', A: 'left', ArrowRight: 'right', d: 'right', D: 'right',
+  ArrowUp: 'up', w: 'up', W: 'up', ArrowDown: 'down', s: 'down', S: 'down', ' ': 'fire' };
+addEventListener('keydown', e => {
+  if (!G.active) return;
+  if (KEYMAP[e.key]) { G.keys.add(KEYMAP[e.key]); e.preventDefault(); }
+  if (e.key === 'Enter' && !G.running) startRun();
+});
+addEventListener('keyup', e => { if (KEYMAP[e.key]) G.keys.delete(KEYMAP[e.key]); });
+addEventListener('blur', () => G.keys.clear());
+
+const _pos = new V3();
+function gameStep(dt, t) {
+  const k = G.keys;
+  const turn = (k.has('right') ? 1 : 0) - (k.has('left') ? 1 : 0);
+  const climb = (k.has('up') ? 1 : 0) - (k.has('down') ? 1 : 0);
+  if (G.running) {
+    G.f.applyAxisAngle(G.p, -turn * TURN * dt);                 // negative angle about "up" = clockwise from above
+    advance(G.p, G.f, SPEED * dt, G.alt);
+    G.alt = clamp(G.alt + climb * CLIMB * dt, skyFloor(G.p), CEIL);
+  }
+  G.bank += (turn * 0.55 - G.bank) * Math.min(1, dt * 5);
+  frameAt(_pos.copy(G.p).multiplyScalar(G.alt), G.p, G.f).decompose(player.position, player.quaternion, player.scale);
+  playerBody.rotation.z = G.bank;
+  playerBody.userData.prop.rotation.z += dt * 40;
+  rules.step(dt, t);
+}
+
 // ---------- Sky Courier (see docs/specs/sky-courier.md) ----------
 const TOWNS = [
   ...CITIES.map((c, i) => ({ name: ['Pop Town', 'Zap City', 'Boomville'][i], dir: c.dir })),
   ...HAMLETS.filter((d, i) => i % 8 === 0).slice(0, 5)
     .map((d, i) => ({ name: ['Mapleton', 'Puddle Bay', 'Windy Hill', 'Cloudford', 'Snug Harbor'][i], dir: d })),
 ];
-const SPEED = 1.8, TURN = 1.7, CLIMB = 1.4, CEIL = R + 5, DELIVER_R = 0.9, RING_R = 0.5;
-
-const player = new THREE.Group(), playerBody = makePlane('#ffd93d');
-playerBody.add(inked(new THREE.BoxGeometry(0.12, 0.08, 0.12).translate(0, 0.09, -0.06), toon('#c98b4f'), 0.01));
-player.add(playerBody); player.visible = false; scene.add(player);   // banking lives on the body, so the chase camera stays level
+const DELIVER_R = 0.9, RING_R = 0.5;
 
 const beacon = new THREE.Group();
 beacon.add(new THREE.Mesh(new THREE.CylinderGeometry(0.45, 0.45, 7, 24, 1, true).translate(0, 3.5, 0),
@@ -893,20 +1021,6 @@ const rings = Array.from({ length: 12 }, () => {
   return { mesh };
 });
 
-const G = { active: false, running: false, p: new V3(), f: new V3(), alt: R + 3.2, bank: 0, time: 0, score: 0, town: null, keys: new Set() };
-let best = 0;
-try { best = Number(localStorage.getItem('lw-sky-courier-best')) || 0; } catch { /* storage blocked: best lives for this visit only */ }
-
-const $ = id => document.getElementById(id);
-const hud = { el: $('hud'), time: $('h-time'), timebox: $('h-timebox'), score: $('h-score'), town: $('h-town'), dist: $('h-dist'), arrow: $('h-arrow') };
-const gdir = () => { const u = Math.random() * 2 - 1, t = Math.random() * 6.283, s = Math.sqrt(1 - u * u); return new V3(s * Math.cos(t), u, s * Math.sin(t)); };
-
-// Lowest safe altitude: above mountains and above the tallest tower of any city.
-function skyFloor(d) {
-  let f = Math.max(heightAt(d), R) + 0.6;
-  for (const c of CITIES) if (d.angleTo(c.dir) < c.cap + 0.08) f = Math.max(f, HC + c.maxH + 0.25);
-  return f;
-}
 function placeRing(r, onRoute) {
   let d;
   if (onRoute && G.town) {   // somewhere along the way to the current target
@@ -931,108 +1045,200 @@ function newLeg() {
   G.time += bonus;
   const d = G.town.dir;
   frameAt(d.clone().multiplyScalar(heightAt(d)), d, tangentBasis(d)[0]).decompose(beacon.position, beacon.quaternion, beacon.scale);
-  hud.town.textContent = G.town.name;
   rings.slice(0, 3).forEach(r => placeRing(r, true));
   return bonus;
 }
-function pop(text) {
-  const el = $('pop'); el.textContent = text;
-  el.classList.remove('show'); void el.offsetWidth; el.classList.add('show');
-}
-function panel(title, text, go) {
-  $('p-title').textContent = title; $('p-text').textContent = text; $('p-go').textContent = go;
-  $('panel').hidden = false;
-}
-function resetPlane() {
-  G.p.copy(CITIES[0].dir); G.f.copy(CITIES[0].t2); G.alt = skyFloor(G.p) + 0.4; G.bank = 0;
-}
-function openGame() {
-  if (mode !== 'orbit') setMode('orbit');
-  G.active = true; G.running = false; G.town = null;
-  resetPlane();
-  player.visible = true; mode = 'game'; target = player; controls.enabled = false;
-  $('ui').hidden = true; $('hint').hidden = true; document.querySelector('h1').hidden = true; hud.el.hidden = true;
-  panel('Sky Courier', 'Fly each parcel to the yellow beacon before the clock runs out. Pink rings give +3 s. ' +
-    '← → steer · ↑ ↓ climb and dive · Esc quits.', 'Start!');
-}
-function startRun() {
-  resetPlane();
-  G.time = 6; G.score = 0; G.town = null; G.keys.clear();
-  newLeg();
-  rings.forEach((r, i) => { r.mesh.visible = true; if (i >= 3) placeRing(r, false); });
-  beacon.visible = true; hud.el.hidden = false; $('panel').hidden = true;
-  G.running = true;
-}
-function endRun() {
-  G.running = false; G.time = 0;
-  const record = G.score > best;
-  if (record) { best = G.score; try { localStorage.setItem('lw-sky-courier-best', String(best)); } catch { /* not saved */ } }
-  panel(record ? 'New best!' : "Time's up!",
-    `You delivered ${G.score} parcel${G.score === 1 ? '' : 's'}. Best: ${best}.`, 'Fly again');
-}
-function quitGame() {
-  G.active = G.running = false; G.keys.clear();
-  player.visible = beacon.visible = false; rings.forEach(r => r.mesh.visible = false);
-  hud.el.hidden = true; $('panel').hidden = true; $('ui').hidden = false; $('hint').hidden = false; document.querySelector('h1').hidden = false;
-  setMode('orbit');
-}
-$('play').onclick = openGame;
-$('p-go').onclick = startRun;
-$('p-back').onclick = quitGame;
-$('h-quit').onclick = quitGame;
 
-const KEYMAP = { ArrowLeft: 'left', a: 'left', A: 'left', ArrowRight: 'right', d: 'right', D: 'right',
-  ArrowUp: 'up', w: 'up', W: 'up', ArrowDown: 'down', s: 'down', S: 'down' };
-addEventListener('keydown', e => {
-  if (!G.active) return;
-  if (KEYMAP[e.key]) { G.keys.add(KEYMAP[e.key]); e.preventDefault(); }
-  if (e.key === 'Enter' && !G.running) startRun();
-});
-addEventListener('keyup', e => { if (KEYMAP[e.key]) G.keys.delete(KEYMAP[e.key]); });
-addEventListener('blur', () => G.keys.clear());
-
-const _axis = new V3(), _pos = new V3(), _right = new V3();
-function gameStep(dt, t) {
-  const k = G.keys;
-  const turn = (k.has('right') ? 1 : 0) - (k.has('left') ? 1 : 0);
-  const climb = (k.has('up') ? 1 : 0) - (k.has('down') ? 1 : 0);
-  if (G.running) {
-    G.f.applyAxisAngle(G.p, -turn * TURN * dt);                 // negative angle about "up" = clockwise from above
-    _axis.crossVectors(G.p, G.f).normalize();
-    const ang = SPEED * dt / G.alt;
-    G.p.applyAxisAngle(_axis, ang).normalize();
-    G.f.applyAxisAngle(_axis, ang).addScaledVector(G.p, -G.f.dot(G.p)).normalize();
-    G.alt = clamp(G.alt + climb * CLIMB * dt, skyFloor(G.p), CEIL);
-    G.time -= dt;
-
-    if (G.p.angleTo(G.town.dir) * R < DELIVER_R) {
-      G.score++;
-      pop(`Delivered! +${Math.round(newLeg())}s`);
+GAMES.courier = {
+  title: 'Sky Courier', key: 'lw-sky-courier-best', best: loadBest('lw-sky-courier-best'),
+  intro: 'Fly each parcel to the yellow beacon before the clock runs out. Pink rings give +3 s. ' +
+    '← → steer · ↑ ↓ climb and dive · Esc quits.',
+  start() {
+    G.time = 6; G.town = null;
+    newLeg();
+    rings.forEach((r, i) => { r.mesh.visible = true; if (i >= 3) placeRing(r, false); });
+    beacon.visible = true;
+  },
+  stop() { beacon.visible = false; rings.forEach(r => r.mesh.visible = false); G.town = null; },
+  step(dt, t) {
+    if (G.running) {
+      G.time -= dt;
+      if (G.p.angleTo(G.town.dir) * R < DELIVER_R) {
+        G.score++;
+        pop(`Delivered! +${Math.round(newLeg())}s`);
+      }
+      _pos.copy(G.p).multiplyScalar(G.alt);
+      for (const r of rings) if (r.mesh.position.distanceTo(_pos) < RING_R) { G.time += 3; pop('+3s'); placeRing(r, true); }
+      if (G.time <= 0) this.end();
     }
-    _pos.copy(G.p).multiplyScalar(G.alt);
-    for (const r of rings) if (r.mesh.position.distanceTo(_pos) < RING_R) { G.time += 3; pop('+3s'); placeRing(r, true); }
-    if (G.time <= 0) endRun();
-  }
-  G.bank += (turn * 0.55 - G.bank) * Math.min(1, dt * 5);
-  frameAt(_pos.copy(G.p).multiplyScalar(G.alt), G.p, G.f).decompose(player.position, player.quaternion, player.scale);
-  playerBody.rotation.z = G.bank;
-  playerBody.userData.prop.rotation.z += dt * 40;
-  beaconBox.position.y = 1.2 + Math.sin(t * 3) * 0.2;
-  beaconBox.rotation.y += dt;
-  rings.forEach(r => r.mesh.rotateZ(dt * 0.8));
+    beaconBox.position.y = 1.2 + Math.sin(t * 3) * 0.2;
+    beaconBox.rotation.y += dt;
+    rings.forEach(r => r.mesh.rotateZ(dt * 0.8));
+    if (G.town) {
+      hud.time.textContent = Math.ceil(G.time);
+      hud.timebox.classList.toggle('low', G.time < 10);
+      hud.score.textContent = G.score;
+      pointAt(G.town.dir, G.town.name);
+    }
+  },
+  end() {
+    G.running = false; G.time = 0;
+    const record = recordBest();
+    panel(record ? 'New best!' : "Time's up!",
+      `You delivered ${G.score} parcel${G.score === 1 ? '' : 's'}. Best: ${this.best}.`, 'Fly again');
+  },
+};
 
-  if (G.town) {
-    hud.time.textContent = Math.ceil(G.time);
-    hud.timebox.classList.toggle('low', G.time < 10);
-    hud.score.textContent = G.score;
-    const td = G.town.dir;
-    _right.crossVectors(G.f, G.p);                              // screen-right when looking along the heading
-    hud.arrow.style.transform = `rotate(${Math.atan2(td.dot(_right), td.dot(G.f))}rad)`;
-    hud.dist.textContent = (G.p.angleTo(td) * R).toFixed(1) + ' km';
-  }
+// ---------- bursts: comic POP! and BOOM! (pooled) ----------
+function wordTexture(word) {
+  const c = document.createElement('canvas'); c.width = 256; c.height = 128;
+  const g = c.getContext('2d');
+  g.font = '86px Bangers, Impact, sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
+  g.lineJoin = 'round'; g.lineWidth = 14; g.strokeStyle = '#15102a'; g.strokeText(word, 128, 66);
+  g.fillStyle = '#ffd93d'; g.fillText(word, 128, 66);
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t;
 }
+const WORDS = { pop: ['POP!'], boom: ['BOOM!', 'POW!', 'KABLAM!'] };
+const WORD_TEX = {};
+for (const w of [...WORDS.pop, ...WORDS.boom]) WORD_TEX[w] = wordTexture(w);
+const FIREBALL = new THREE.IcosahedronGeometry(1, 1);
+const bursts = Array.from({ length: 10 }, () => {
+  const g = new THREE.Group();
+  const fire = inked(FIREBALL, toon('#ff9f43', null, SOFT_RAMP), 0.02);
+  const core = new THREE.Mesh(FIREBALL, toon('#fff27a', null, SOFT_RAMP));
+  core.scale.setScalar(0.7); core.position.z = 0.35; fire.add(core);   // core leans towards the camera side
+  const word = new THREE.Sprite(new THREE.SpriteMaterial({ transparent: true, depthTest: false }));
+  word.renderOrder = 10;
+  g.add(fire, word); g.visible = false; scene.add(g);
+  return { g, fire, word, age: 99, size: 1 };
+});
+let nextBurst = 0;
+function burst(pos, kind) {
+  const b = bursts[nextBurst]; nextBurst = (nextBurst + 1) % bursts.length;
+  b.g.position.copy(pos); b.g.visible = true; b.age = 0; b.size = kind === 'pop' ? 0.3 : 0.55;
+  b.word.material.map = WORD_TEX[pick(WORDS[kind])];
+}
+movers.push((t, dt) => {
+  for (const b of bursts) {
+    if (!b.g.visible) continue;
+    b.age += dt;
+    const k = b.age / 0.9;
+    if (k >= 1) { b.g.visible = false; continue; }
+    b.fire.scale.setScalar(b.size * smooth(0, 0.2, k) * (1 - smooth(0.45, 1, k)));
+    b.fire.quaternion.copy(camera.quaternion);
+    const w = b.size * 2.4 * (0.6 + 0.4 * smooth(0, 0.15, k));
+    b.word.scale.set(w, w / 2, 1);
+    b.word.position.copy(camera.up).multiplyScalar(b.size * 1.2);
+    b.word.material.opacity = 1 - smooth(0.7, 1, k);
+  }
+});
+
+// ---------- Sky Raid (see docs/specs/sky-raid.md) ----------
+const SHOT_SPEED = 7, SHOT_RANGE = 4.2, FIRE_GAP = 0.14, HIT_R = 0.35, TRAINING = 8;
+
+const shotMesh = new THREE.InstancedMesh(new THREE.BoxGeometry(0.07, 0.07, 0.4),
+  new THREE.MeshBasicMaterial({ color: '#fff27a' }), 40);
+shotMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+shotMesh.frustumCulled = false; shotMesh.visible = false; scene.add(shotMesh);
+const shots = Array.from({ length: shotMesh.count }, () => ({ p: new V3(), f: new V3(), alt: 0, life: 0 }));
+const shotWorld = (s, out = new V3()) => out.copy(s.p).multiplyScalar(s.alt);
+let fireWait = 0;
+const _shotM = new THREE.Matrix4();
+
+function fire() {
+  const s = shots.find(s => s.life <= 0);
+  if (!s) return;
+  s.p.copy(G.p); s.f.copy(G.f); s.alt = G.alt - 0.02; s.life = SHOT_RANGE / SHOT_SPEED;
+  advance(s.p, s.f, 0.3, s.alt);   // leave from the nose, not the cockpit
+}
+
+// Target balloons: red and white, all sharing one texture.
+const TARGET_TEX = stripes('#e8263b', '#ffffff');
+const balloons = Array.from({ length: TRAINING }, () => {
+  const mesh = makeBalloon('#e8263b', TARGET_TEX); mesh.visible = false; scene.add(mesh);
+  return { mesh, dir: new V3(), base: new V3(), alive: false, ph: Math.random() * 6 };
+});
+// Spread around the start town, at heights the plane can reach.
+function placeBalloons() {
+  const [t1, t2] = tangentBasis(CITIES[0].dir);
+  balloons.forEach((b, i) => {
+    const ang = 0.12 + i * 0.06, bear = Math.random() * 6.283;
+    b.dir.copy(CITIES[0].dir).multiplyScalar(Math.cos(ang))
+      .addScaledVector(t1, Math.sin(ang) * Math.cos(bear)).addScaledVector(t2, Math.sin(ang) * Math.sin(bear)).normalize();
+    const alt = Math.min(skyFloor(b.dir) + rr(0.1, 1.2), CEIL - 0.5);
+    b.base.copy(b.dir).multiplyScalar(alt);
+    b.mesh.position.copy(b.base); b.mesh.quaternion.setFromUnitVectors(UP, b.dir);
+    b.alive = b.mesh.visible = true;
+  });
+}
+function nearest(list) {
+  let best = null, bd = Infinity;
+  for (const x of list) { const d = x.mesh.position.distanceToSquared(player.position); if (d < bd) { bd = d; best = x; } }
+  return best;
+}
+const enemies = [];
+
+GAMES.raid = {
+  title: 'Sky Raid', key: 'lw-sky-raid-best', best: loadBest('lw-sky-raid-best'),
+  intro: 'Training first: pop the 8 red target balloons. Space fires. ' +
+    '← → steer · ↑ ↓ climb and dive · Esc quits.',
+  start() {
+    G.lives = 3; fireWait = 0;
+    shots.forEach(s => s.life = 0);
+    shotMesh.visible = true;
+    placeBalloons();
+  },
+  stop() {
+    shots.forEach(s => s.life = 0);
+    shotMesh.visible = false;
+    balloons.forEach(b => b.alive = b.mesh.visible = false);
+  },
+  step(dt, t) {
+    fireWait -= dt;
+    if (G.running && G.keys.has('fire') && fireWait <= 0) { fire(); fireWait = FIRE_GAP; }
+
+    const m = _shotM;
+    shots.forEach((s, i) => {
+      if (s.life > 0) {
+        s.life -= dt;
+        advance(s.p, s.f, SHOT_SPEED * dt, s.alt);
+        shotWorld(s, _pos);
+        for (const b of balloons) if (b.alive && b.mesh.position.distanceTo(_pos) < HIT_R) {
+          b.alive = b.mesh.visible = false; s.life = 0;
+          burst(b.mesh.position, 'pop');
+          G.score += 2;
+        }
+      }
+      if (s.life > 0) m.copy(frameAt(shotWorld(s, _pos), s.p, s.f));
+      else m.makeScale(0, 0, 0);
+      shotMesh.setMatrixAt(i, m);
+    });
+    shotMesh.instanceMatrix.needsUpdate = true;
+
+    for (const b of balloons) if (b.alive)
+      b.mesh.position.copy(b.base).addScaledVector(b.dir, Math.sin(t * 1.3 + b.ph) * 0.08);
+
+    const left = balloons.filter(b => b.alive);
+    if (G.running && !left.length) this.end();
+    hud.lives.textContent = '♥'.repeat(G.lives);
+    hud.points.textContent = G.score;
+    const n = nearest(left);
+    if (n) pointAt(n.dir, `Balloons ${left.length}`);
+  },
+  // Sprint 1 stops after training; waves of enemies come next.
+  end() {
+    G.running = false;
+    recordBest();
+    panel('Training done!', `All ${TRAINING} balloons popped, ${G.score} points. ` +
+      'Enemy waves come next. They are not in the game yet.', 'Train again');
+  },
+};
 LW.game = G;
-LW.courier = { openGame, startRun, quitGame, endRun, rings, TOWNS, skyFloor };
+LW.V3 = V3;
+LW.player = player;
+LW.games = { open: openGame, start: startRun, quit: quitGame };
+LW.courier = { openGame: () => openGame('courier'), startRun, quitGame, endRun: () => GAMES.courier.end(), rings, TOWNS, skyFloor };
+LW.raid = { balloons, shots, enemies, bursts, fire, shotWorld };
 
 addEventListener('resize', () => {
   camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix();

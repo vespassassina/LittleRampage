@@ -2,6 +2,14 @@
 
 Newest first.
 
+## 2026-09-23 — Sky Raid, sprint 1: training round
+
+- **Both games share one flight core.** Plane, camera, HUD, panels and best score are common; each game is a small rules object (`GAMES.courier`, `GAMES.raid`) with start, stop, step and end. Asked for: "keep same code".
+- **Training first, then the fight.** Eight red target balloons near the start town. Nothing shoots back. The fight (enemy waves, lives, bombs) is sprint 2.
+- **Shots follow the planet's curve** like the plane, so they stay at the height they were fired from. One instanced mesh draws all 40.
+- **POP! and BOOM! are pooled** comic bursts: a toon fireball plus a word sprite. Ten, reused in turn.
+- **Dropped the draw-call cap from the spec.** The sandbox already draws about 785 calls in full orbit view; the check is now that pooled objects don't grow.
+
 ## 2026-09-23 — Sky Courier game mode
 
 - **One game, in the same file.** A Play button switches from the sandbox to the game. Esc or Quit switches back. The world keeps running underneath.

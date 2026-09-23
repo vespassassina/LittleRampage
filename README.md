@@ -32,6 +32,11 @@ Each delivery adds time; pink rings add a little more. The run ends when time hi
 
 Keyboard only for now. Rules are in [docs/specs/sky-courier.md](docs/specs/sky-courier.md).
 
+## Sky Raid
+
+Press **Play Sky Raid**. Training first: pop the 8 red target balloons. Space fires,
+the arrow points at the nearest balloon. Enemy waves come in the next update.
+
 ## How it works
 
 See [docs/DECISIONS.md](docs/DECISIONS.md).

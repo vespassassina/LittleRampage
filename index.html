@@ -166,8 +166,14 @@ const TEST_MODE = new URLSearchParams(location.search).has('test');
 
 const V3 = THREE.Vector3;
 const UP = new V3(0, 1, 0);
-const R = 10;            // planet radius (sea level)
-const HC = R + 0.32;     // height of city plateaus
+const R = 15;             // planet radius (sea level) — planet-v2 AC1, was 10
+const HC = R + 0.32;      // height of city plateaus (absolute; not scaled with R)
+// Terrain noise is sampled from unit-ish direction vectors, so its wavelength in
+// world units grows with R unless frequency grows to match (arc length = angle * R;
+// angle per noise-cycle ~ 1/frequency, so frequency must scale with R to hold the
+// arc length, i.e. a mountain's width in world units, constant). NZ is that scale
+// factor, anchored to the original R=10 tuning.
+const NZ = R / 10;
 
 // ---------- helpers ----------
 let seed = 20260923;
@@ -230,9 +236,10 @@ for (const c of CITIES) {
 }
 
 function rawHeight(d) {
-  const e = fbm(d.x * 1.6 + 3.1, d.y * 1.6 - 1.7, d.z * 1.6 + 0.4, 5) + 0.04;
+  const f1 = 1.6 * NZ, f2 = 2.2 * NZ;
+  const e = fbm(d.x * f1 + 3.1, d.y * f1 - 1.7, d.z * f1 + 0.4, 5) + 0.04;
   if (e <= 0) return R + e * 3.0;
-  const ridge = clamp(1 - Math.abs(fbm(d.x * 2.2 + 7, d.y * 2.2, d.z * 2.2 - 5, 3) * 2.4), 0, 1);
+  const ridge = clamp(1 - Math.abs(fbm(d.x * f2 + 7, d.y * f2, d.z * f2 - 5, 3) * 2.4), 0, 1);
   return R + e * 1.2 + Math.pow(ridge, 3) * 1.9 * smooth(0.1, 0.3, e);
 }
 function heightAt(d) {
@@ -1568,6 +1575,10 @@ function frame(fixedDt) {
 // a flaky test rather than a clean failure or a clean pass.
 if (!TEST_MODE) renderer.setAnimationLoop(() => frame());
 LW.frame = frame;
+LW.R = R;               // expose for tests (planet-v2 AC1)
+LW.NZ = NZ;
+LW.rawHeight = rawHeight;
+LW.CITIES = CITIES;
 LW.makeCar = makeCar;   // expose for tests
 LW.addCarInstance = addCarInstance;   // expose for tests
 LW.setCarsVisible = setCarsVisible;   // expose for tests: measure traffic's own draw-call cost

@@ -10,6 +10,65 @@
  */
 
 LW_TESTS.push({
+  name: 'planet: R=15, terrain keeps its world-unit size (AC 1)',
+  run(LW) {
+    // AC1: "R = 15. A mountain and a city block measure the same in world units
+    // as before (+-10%)."
+    //
+    // Radius check.
+    if (LW.R !== 15) throw new Error(`Expected R = 15, got ${LW.R}`);
+
+    // Mountain height: rawHeight() adds noise on top of R, so a mountain's
+    // absolute height above sea level is (rawHeight(d) - R). Terrain noise
+    // frequency is scaled by NZ = R/10 so a wave of the noise field always
+    // covers the same arc length (arc length = angle * R; angle per noise
+    // cycle ~ 1/frequency, so frequency must grow with R to hold that
+    // constant). Passing the SAME underlying noise coordinate in (frequency
+    // * direction) space - by shrinking the raw direction by 1/NZ to offset
+    // the frequency scale-up - samples the "same" bump of terrain that a
+    // reference run at R=10, NZ=1 would have sampled, and its absolute
+    // height should come out the same (this is the reference measurement
+    // recorded from the actual R=10 code before the change; see
+    // docs/DECISIONS.md and the coder's report for the raw before/after run).
+    if (LW.NZ !== LW.R / 10) throw new Error(`Expected NZ = R/10, got ${LW.NZ} for R=${LW.R}`);
+    const samples = [
+      { x: 0.30, y: 0.60, z: 0.74 },
+      { x: -0.9, y: 0.2, z: 0.55 },
+      { x: 0.1, y: -0.8, z: 0.4 },
+      { x: 0.66, y: 0.33, z: -0.5 },
+    ];
+    // These are the actual values measured from the unmodified R=10, NZ=1 code
+    // (height above sea level, i.e. rawHeight(d) - 10).
+    const baselineHeightAboveSea = [-0.2601, -0.1542, 0.0802, 2.1636];
+    for (let i = 0; i < samples.length; i++) {
+      const d = samples[i];
+      const dScaled = { x: d.x / LW.NZ, y: d.y / LW.NZ, z: d.z / LW.NZ };
+      const h = LW.rawHeight(dScaled) - LW.R;
+      const base = baselineHeightAboveSea[i];
+      const tolerance = Math.max(Math.abs(base) * 0.1, 0.01);
+      if (Math.abs(h - base) > tolerance) {
+        throw new Error(
+          `Mountain height above sea drifted for sample ${i}: got ${h.toFixed(4)}, ` +
+          `expected ${base.toFixed(4)} +-${tolerance.toFixed(4)} (R=10 baseline)`
+        );
+      }
+    }
+
+    // City block size: a city's footprint (Lr, in world units) is defined
+    // independently of R and reconstructed via cap = atan((Lr+0.32)/HC), so
+    // it must come back out exactly the same regardless of R.
+    const expectedLr = [3.4, 2.4, 2.4];
+    LW.CITIES.forEach((c, i) => {
+      if (Math.abs(c.Lr - expectedLr[i]) > 1e-9) {
+        throw new Error(`City ${i} block size changed: expected Lr=${expectedLr[i]}, got ${c.Lr}`);
+      }
+    });
+
+    return true;
+  }
+});
+
+LW_TESTS.push({
   name: 'planet: cars are instanced (AC 5)',
   run(LW) {
     // Verify cars exist in the scene

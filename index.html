@@ -41,6 +41,41 @@
     padding: 6px 12px; box-shadow: 3px 3px 0 #000; pointer-events: none;
   }
   @media (max-width: 600px) { h1 { font-size: 34px; } #hint { display: none; } button { font-size: 17px; padding: 5px 10px; } }
+  [hidden] { display: none !important; }
+  #play { background: #ff6b6b; color: #fff; -webkit-text-stroke: 1px #000; }
+  #hud { position: fixed; top: 14px; left: 50%; transform: translateX(-50%); z-index: 2; display: flex; gap: 8px; align-items: stretch; }
+  #hud .box {
+    background: #fff; color: #000; border: 3px solid #000; border-radius: 12px; box-shadow: 3px 3px 0 #000;
+    padding: 4px 12px; font-size: 18px; letter-spacing: 1px; display: flex; align-items: center; gap: 8px; white-space: nowrap;
+  }
+  #hud b { font-size: 28px; font-weight: 400; }
+  #hud .low b { color: #e8263b; }
+  #hud .target { background: #ffd93d; }
+  #h-arrow { width: 0; height: 0; border-left: 10px solid transparent; border-right: 10px solid transparent; border-bottom: 22px solid #000; }
+  #hud button { font-size: 18px; padding: 4px 10px; }
+  #pop {
+    position: fixed; left: 50%; top: 32%; z-index: 3; pointer-events: none; opacity: 0;
+    font-size: 54px; color: #ffd93d; -webkit-text-stroke: 2px #000; text-shadow: 4px 4px 0 #000; white-space: nowrap;
+    transform: translate(-50%, 0) rotate(-4deg);
+  }
+  #pop.show { animation: pop 1.1s ease-out; }
+  @keyframes pop {
+    0% { opacity: 0; transform: translate(-50%, 20px) rotate(-4deg) scale(.5); }
+    15% { opacity: 1; transform: translate(-50%, 0) rotate(-4deg) scale(1.15); }
+    70% { opacity: 1; transform: translate(-50%, -10px) rotate(-4deg) scale(1); }
+    100% { opacity: 0; transform: translate(-50%, -40px) rotate(-4deg) scale(1); }
+  }
+  #panel {
+    position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%) rotate(-1deg); z-index: 3;
+    width: min(460px, calc(100vw - 32px)); box-sizing: border-box;
+    background: #fff; color: #000; border: 4px solid #000; border-radius: 18px; box-shadow: 6px 6px 0 #000;
+    padding: 18px 22px; text-align: center; letter-spacing: 1px;
+  }
+  #panel h2 { margin: 0 0 6px; font-size: 44px; font-weight: 400; color: #ff6b6b; -webkit-text-stroke: 1.5px #000; }
+  #panel p { font-family: system-ui, sans-serif; font-size: 16px; line-height: 1.45; margin: 0 0 14px; letter-spacing: 0; }
+  #panel .row { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; }
+  #p-go { background: #ffd93d; }
+  @media (max-width: 600px) { #hud { top: 60px; flex-wrap: wrap; justify-content: center; width: calc(100vw - 32px); } #hud b { font-size: 22px; } }
 </style>
 <script type="importmap">
 { "imports": {
@@ -53,7 +88,20 @@
 <div id="halftone"></div>
 <h1>Little Worlds!</h1>
 <div id="hint">Drag to orbit · scroll to zoom in close</div>
+<div id="hud" hidden>
+  <div class="box" id="h-timebox">TIME <b id="h-time">0</b></div>
+  <div class="box">DELIVERED <b id="h-score">0</b></div>
+  <div class="box target"><div id="h-arrow"></div><span id="h-town"></span><b id="h-dist"></b></div>
+  <button id="h-quit">Quit</button>
+</div>
+<div id="pop"></div>
+<div id="panel" hidden>
+  <h2 id="p-title"></h2>
+  <p id="p-text"></p>
+  <div class="row"><button id="p-go"></button><button id="p-back">Back to sandbox</button></div>
+</div>
 <div id="ui">
+  <button id="play">Play Sky Courier</button>
   <button data-mode="orbit" class="on">Orbit</button>
   <button data-mode="plane">Ride a plane</button>
   <button data-mode="car">Ride a car</button>
@@ -535,10 +583,12 @@ for (let k = 0, placed = 0; k < 9000 && placed < 1700; k++) {
   placed++;
 }
 // hamlets
+const HAMLETS = [];
 for (let k = 0, placed = 0; k < 3000 && placed < 40; k++) {
   const d = randomDir(), h = heightAt(d);
   if (h < R + 0.12 || h > R + 0.6 || nearCity(d, 0.05)) continue;
   addHouse(world, frameAt(d.clone().multiplyScalar(h - 0.02), d, randomDir()), rr(0.18, 0.26));
+  HAMLETS.push(d);
   placed++;
 }
 world.build(scene);
@@ -801,6 +851,7 @@ const CHASE = {
   plane: { off: new V3(0, 0.6, -1.1), look: new V3(0, -0.5, 1.6) },
   car:   { off: new V3(0, 0.22, -0.5), look: new V3(0, 0.06, 0.5) },
   boat:  { off: new V3(0, 0.3, -0.8), look: new V3(0, 0.02, 0.6) },
+  game:  { off: new V3(0, 0.75, -1.7), look: new V3(0, -0.45, 1.8) },
 };
 let mode = 'orbit', target = null;
 const idx = { plane: -1, car: -1, boat: -1, sat: -1 };
@@ -816,7 +867,172 @@ function setMode(m) {
   controls.enabled = false;
 }
 document.querySelectorAll('[data-mode]').forEach(b => b.onclick = () => setMode(b.dataset.mode));
-addEventListener('keydown', e => { if (e.key === 'Escape') setMode('orbit'); });
+addEventListener('keydown', e => { if (e.key === 'Escape') { if (G.active) quitGame(); else setMode('orbit'); } });
+
+// ---------- Sky Courier (see docs/specs/sky-courier.md) ----------
+const TOWNS = [
+  ...CITIES.map((c, i) => ({ name: ['Pop Town', 'Zap City', 'Boomville'][i], dir: c.dir })),
+  ...HAMLETS.filter((d, i) => i % 8 === 0).slice(0, 5)
+    .map((d, i) => ({ name: ['Mapleton', 'Puddle Bay', 'Windy Hill', 'Cloudford', 'Snug Harbor'][i], dir: d })),
+];
+const SPEED = 1.8, TURN = 1.7, CLIMB = 1.4, CEIL = R + 5, DELIVER_R = 0.9, RING_R = 0.5;
+
+const player = new THREE.Group(), playerBody = makePlane('#ffd93d');
+playerBody.add(inked(new THREE.BoxGeometry(0.12, 0.08, 0.12).translate(0, 0.09, -0.06), toon('#c98b4f'), 0.01));
+player.add(playerBody); player.visible = false; scene.add(player);   // banking lives on the body, so the chase camera stays level
+
+const beacon = new THREE.Group();
+beacon.add(new THREE.Mesh(new THREE.CylinderGeometry(0.45, 0.45, 7, 24, 1, true).translate(0, 3.5, 0),
+  new THREE.MeshBasicMaterial({ color: '#ffd93d', transparent: true, opacity: 0.35, depthWrite: false, side: THREE.DoubleSide })));
+const beaconBox = inked(new THREE.BoxGeometry(0.3, 0.3, 0.3), toon('#c98b4f'), 0.02);
+beacon.add(beaconBox); beacon.visible = false; scene.add(beacon);
+
+const RING = new THREE.TorusGeometry(0.42, 0.06, 10, 28);
+const rings = Array.from({ length: 12 }, () => {
+  const mesh = inked(RING, toon('#ff7eb6'), 0.02); mesh.visible = false; scene.add(mesh);
+  return { mesh };
+});
+
+const G = { active: false, running: false, p: new V3(), f: new V3(), alt: R + 3.2, bank: 0, time: 0, score: 0, town: null, keys: new Set() };
+let best = 0;
+try { best = Number(localStorage.getItem('lw-sky-courier-best')) || 0; } catch { /* storage blocked: best lives for this visit only */ }
+
+const $ = id => document.getElementById(id);
+const hud = { el: $('hud'), time: $('h-time'), timebox: $('h-timebox'), score: $('h-score'), town: $('h-town'), dist: $('h-dist'), arrow: $('h-arrow') };
+const gdir = () => { const u = Math.random() * 2 - 1, t = Math.random() * 6.283, s = Math.sqrt(1 - u * u); return new V3(s * Math.cos(t), u, s * Math.sin(t)); };
+
+// Lowest safe altitude: above mountains and above the tallest tower of any city.
+function skyFloor(d) {
+  let f = Math.max(heightAt(d), R) + 0.6;
+  for (const c of CITIES) if (d.angleTo(c.dir) < c.cap + 0.08) f = Math.max(f, HC + c.maxH + 0.25);
+  return f;
+}
+function placeRing(r, onRoute) {
+  let d;
+  if (onRoute && G.town) {   // somewhere along the way to the current target
+    const q = new THREE.Quaternion().setFromUnitVectors(G.p, G.town.dir);
+    d = G.p.clone().applyQuaternion(new THREE.Quaternion().slerp(q, 0.25 + Math.random() * 0.6));
+    d.addScaledVector(gdir(), 0.08).normalize();
+  } else d = gdir();
+  r.dir = d;
+  const alt = Math.max(skyFloor(d) + 0.3, R + 2.4 + Math.random() * 2);
+  frameAt(d.clone().multiplyScalar(Math.min(alt, CEIL - 0.3)), d, gdir()).decompose(r.mesh.position, r.mesh.quaternion, r.mesh.scale);
+}
+function pickTown() {
+  const far = TOWNS.filter(t => t !== G.town && t.dir.angleTo(G.p) > 0.7);
+  const pool = far.length ? far : TOWNS.filter(t => t !== G.town);
+  return pool[Math.floor(Math.random() * pool.length)];
+}
+// Sets the next target and returns the seconds granted for the leg: shrinks as the score rises.
+function newLeg() {
+  G.town = pickTown();
+  const dist = G.town.dir.angleTo(G.p) * G.alt;
+  const bonus = dist / SPEED * Math.max(1.15, 1.8 - G.score * 0.06) + 4;
+  G.time += bonus;
+  const d = G.town.dir;
+  frameAt(d.clone().multiplyScalar(heightAt(d)), d, tangentBasis(d)[0]).decompose(beacon.position, beacon.quaternion, beacon.scale);
+  hud.town.textContent = G.town.name;
+  rings.slice(0, 3).forEach(r => placeRing(r, true));
+  return bonus;
+}
+function pop(text) {
+  const el = $('pop'); el.textContent = text;
+  el.classList.remove('show'); void el.offsetWidth; el.classList.add('show');
+}
+function panel(title, text, go) {
+  $('p-title').textContent = title; $('p-text').textContent = text; $('p-go').textContent = go;
+  $('panel').hidden = false;
+}
+function resetPlane() {
+  G.p.copy(CITIES[0].dir); G.f.copy(CITIES[0].t2); G.alt = skyFloor(G.p) + 0.4; G.bank = 0;
+}
+function openGame() {
+  if (mode !== 'orbit') setMode('orbit');
+  G.active = true; G.running = false; G.town = null;
+  resetPlane();
+  player.visible = true; mode = 'game'; target = player; controls.enabled = false;
+  $('ui').hidden = true; $('hint').hidden = true; document.querySelector('h1').hidden = true; hud.el.hidden = true;
+  panel('Sky Courier', 'Fly each parcel to the yellow beacon before the clock runs out. Pink rings give +3 s. ' +
+    '← → steer · ↑ ↓ climb and dive · Esc quits.', 'Start!');
+}
+function startRun() {
+  resetPlane();
+  G.time = 6; G.score = 0; G.town = null; G.keys.clear();
+  newLeg();
+  rings.forEach((r, i) => { r.mesh.visible = true; if (i >= 3) placeRing(r, false); });
+  beacon.visible = true; hud.el.hidden = false; $('panel').hidden = true;
+  G.running = true;
+}
+function endRun() {
+  G.running = false; G.time = 0;
+  const record = G.score > best;
+  if (record) { best = G.score; try { localStorage.setItem('lw-sky-courier-best', String(best)); } catch { /* not saved */ } }
+  panel(record ? 'New best!' : "Time's up!",
+    `You delivered ${G.score} parcel${G.score === 1 ? '' : 's'}. Best: ${best}.`, 'Fly again');
+}
+function quitGame() {
+  G.active = G.running = false; G.keys.clear();
+  player.visible = beacon.visible = false; rings.forEach(r => r.mesh.visible = false);
+  hud.el.hidden = true; $('panel').hidden = true; $('ui').hidden = false; $('hint').hidden = false; document.querySelector('h1').hidden = false;
+  setMode('orbit');
+}
+$('play').onclick = openGame;
+$('p-go').onclick = startRun;
+$('p-back').onclick = quitGame;
+$('h-quit').onclick = quitGame;
+
+const KEYMAP = { ArrowLeft: 'left', a: 'left', A: 'left', ArrowRight: 'right', d: 'right', D: 'right',
+  ArrowUp: 'up', w: 'up', W: 'up', ArrowDown: 'down', s: 'down', S: 'down' };
+addEventListener('keydown', e => {
+  if (!G.active) return;
+  if (KEYMAP[e.key]) { G.keys.add(KEYMAP[e.key]); e.preventDefault(); }
+  if (e.key === 'Enter' && !G.running) startRun();
+});
+addEventListener('keyup', e => { if (KEYMAP[e.key]) G.keys.delete(KEYMAP[e.key]); });
+addEventListener('blur', () => G.keys.clear());
+
+const _axis = new V3(), _pos = new V3(), _right = new V3();
+function gameStep(dt, t) {
+  const k = G.keys;
+  const turn = (k.has('right') ? 1 : 0) - (k.has('left') ? 1 : 0);
+  const climb = (k.has('up') ? 1 : 0) - (k.has('down') ? 1 : 0);
+  if (G.running) {
+    G.f.applyAxisAngle(G.p, -turn * TURN * dt);                 // negative angle about "up" = clockwise from above
+    _axis.crossVectors(G.p, G.f).normalize();
+    const ang = SPEED * dt / G.alt;
+    G.p.applyAxisAngle(_axis, ang).normalize();
+    G.f.applyAxisAngle(_axis, ang).addScaledVector(G.p, -G.f.dot(G.p)).normalize();
+    G.alt = clamp(G.alt + climb * CLIMB * dt, skyFloor(G.p), CEIL);
+    G.time -= dt;
+
+    if (G.p.angleTo(G.town.dir) * R < DELIVER_R) {
+      G.score++;
+      pop(`Delivered! +${Math.round(newLeg())}s`);
+    }
+    _pos.copy(G.p).multiplyScalar(G.alt);
+    for (const r of rings) if (r.mesh.position.distanceTo(_pos) < RING_R) { G.time += 3; pop('+3s'); placeRing(r, true); }
+    if (G.time <= 0) endRun();
+  }
+  G.bank += (turn * 0.55 - G.bank) * Math.min(1, dt * 5);
+  frameAt(_pos.copy(G.p).multiplyScalar(G.alt), G.p, G.f).decompose(player.position, player.quaternion, player.scale);
+  playerBody.rotation.z = G.bank;
+  playerBody.userData.prop.rotation.z += dt * 40;
+  beaconBox.position.y = 1.2 + Math.sin(t * 3) * 0.2;
+  beaconBox.rotation.y += dt;
+  rings.forEach(r => r.mesh.rotateZ(dt * 0.8));
+
+  if (G.town) {
+    hud.time.textContent = Math.ceil(G.time);
+    hud.timebox.classList.toggle('low', G.time < 10);
+    hud.score.textContent = G.score;
+    const td = G.town.dir;
+    _right.crossVectors(G.f, G.p);                              // screen-right when looking along the heading
+    hud.arrow.style.transform = `rotate(${Math.atan2(td.dot(_right), td.dot(G.f))}rad)`;
+    hud.dist.textContent = (G.p.angleTo(td) * R).toFixed(1) + ' km';
+  }
+}
+LW.game = G;
+LW.courier = { openGame, startRun, quitGame, endRun, rings, TOWNS, skyFloor };
 
 addEventListener('resize', () => {
   camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix();
@@ -829,6 +1045,7 @@ const tmp = new V3(), tmp2 = new V3();
 function frame(fixedDt) {
   const dt = fixedDt ?? Math.min(clock.getDelta(), 0.05), t = clock.elapsedTime;
   for (const f of movers) f(t, dt);
+  if (mode === 'game') gameStep(dt, t);
 
   let alt = camera.position.length() - R;
   if (mode === 'orbit') {

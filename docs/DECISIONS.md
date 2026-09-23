@@ -2,6 +2,14 @@
 
 Newest first.
 
+## 2026-09-23 — Sky Courier game mode
+
+- **One game, in the same file.** A Play button switches from the sandbox to the game. Esc or Quit switches back. The world keeps running underneath.
+- **Deliver parcels between the 3 cities and 5 hamlets before time runs out.** Each delivery adds time. The bonus shrinks as the score grows, so a run always ends. Pink rings on the way give +3 s.
+- **The plane moves on the sphere by rotating its position and heading around a local axis.** No physics engine. Altitude is clamped between a floor above terrain and roofs, and a ceiling.
+- **Best score lives in localStorage.** Nothing leaves the browser.
+- **Keyboard only for now.** Touch and sound are sprint 2.
+
 ## 2026-09-23 — Satellites and a space station
 
 - Six satellites orbit at 5–7 units up and a space station at 8, all on tilted circular orbits. Satellite dishes point at the planet, and blinking lights share one material.

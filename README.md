@@ -20,6 +20,18 @@ Then open http://localhost:8765. Double-clicking `index.html` also works in most
 - **Ride a plane / car / boat** and **Visit space** follow a vehicle. Press it again for the next one.
 - **Orbit** or Esc goes back to free orbit. **Spin** toggles the slow auto-rotation.
 
+## Sky Courier
+
+A small game. Press **Play Sky Courier**, then Enter or **Start!**.
+Carry parcels to the town the arrow points at. Fly through the yellow beacon to deliver.
+Each delivery adds time; pink rings add a little more. The run ends when time hits zero.
+
+- ← → or A D: steer
+- ↑ ↓ or W S: climb and dive
+- Esc: quit to the sandbox
+
+Keyboard only for now. Rules are in [docs/specs/sky-courier.md](docs/specs/sky-courier.md).
+
 ## How it works
 
 See [docs/DECISIONS.md](docs/DECISIONS.md).

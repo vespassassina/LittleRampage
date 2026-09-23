@@ -111,8 +111,8 @@ spec/plan pass before building (real features, not one-liners).
 - [x] Orbit button: currently does nothing after the first click. Fix so it resets the
   camera to the start framing (whole planet visible, per P1's AC3 start-distance math)
   and restarts the idle spin.
-- [ ] Idle spin should not stop on zoom (scroll wheel), only on an explicit drag-to-orbit.
-- [ ] In orbit view, up/down arrow keys zoom and left/right arrow keys rotate the view
+- [x] Idle spin should not stop on zoom (scroll wheel), only on an explicit drag-to-orbit.
+- [x] In orbit view, up/down arrow keys zoom and left/right arrow keys rotate the view
   (new controls) — same rule: using them should not stop the idle spin either.
 
 Raised 2026-09-23 (second batch), needs design before building:

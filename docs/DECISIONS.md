@@ -2,6 +2,30 @@
 
 Newest first.
 
+## 2026-09-23 — Idle spin only stops on a drag; new arrow-key zoom/orbit in sandbox view
+
+- **Root cause of scroll-to-zoom killing the idle spin:** OrbitControls' `onMouseWheel`
+  (`vendor/three/examples/jsm/controls/OrbitControls.js`) dispatches the same `'start'`
+  event that `onMouseDown`/`onTouchStart` dispatch for an actual rotate drag — the event
+  carries no detail to tell them apart. `controls.addEventListener('start', ...)` couldn't
+  distinguish "user is scrolling to zoom" from "user is dragging to orbit."
+- **Fix:** dropped the `controls` `'start'` subscription; listen to raw `pointerdown` on
+  `renderer.domElement` instead, gated on `controls.enabled`. `pointerdown` fires for a real
+  drag/touch gesture (rotate, middle-drag dolly, pinch) but never for a `wheel` event, so
+  scrolling no longer stops the spin while an actual drag still does.
+- **New arrow-key controls, sandbox/orbit view only** (`mode !== 'orbit'` bails — covers
+  both riding a vehicle and an active game, which already own the arrow keys via the
+  flight KEYMAP): ArrowUp/ArrowDown dolly zoom by a fixed `1.12`× distance multiplier per
+  tap (discrete per keypress, not continuous-while-held), clamped to
+  `controls.minDistance`/`maxDistance`. ArrowLeft/ArrowRight orbit the camera around
+  `controls.target` by `Math.PI/15` (12°) per tap, around `camera.up`. Both move
+  `camera.position` directly and call `controls.update()` rather than going through
+  OrbitControls' own pointer/wheel path, so they never touch `setSpin` and can't stop the
+  idle spin.
+- Verified 64/64 passing in a real browser (`tests.html`, hard-reloaded), two consecutive
+  runs to rule out the known AC3 orbit-sampling flake — no regressions. New tests in
+  `tests/orbit-controls.js`.
+
 ## 2026-09-23 — quitGame() no longer resets camera position, only mode/spin
 
 - **Root cause of a regression in "planet: orbit camera never goes inside terrain or

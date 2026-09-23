@@ -1041,7 +1041,12 @@ controls.autoRotate = !TEST_MODE; controls.autoRotateSpeed = 0.35;
 const spinBtn = document.getElementById('spin');
 const setSpin = on => { controls.autoRotate = on; spinBtn.classList.toggle('on', on); };
 spinBtn.onclick = () => setSpin(!controls.autoRotate);
-controls.addEventListener('start', () => setSpin(false));
+// OrbitControls' own 'start' event fires from onMouseWheel too (vendor/three/examples/jsm/
+// controls/OrbitControls.js), so a plain scroll-to-zoom used to kill the idle spin along with
+// an actual drag. Listen to the raw pointerdown instead: it only fires for a real drag/touch
+// gesture (rotate, middle-drag dolly, pinch), never for a wheel event, so a scroll leaves the
+// spin running while a drag still stops it as before.
+renderer.domElement.addEventListener('pointerdown', () => { if (controls.enabled) setSpin(false); });
 
 const CHASE = {
   plane: { off: new V3(0, 0.6, -1.1), look: new V3(0, -0.5, 1.6) },
@@ -1074,6 +1079,34 @@ function setMode(m, resetView = true) {
 }
 document.querySelectorAll('[data-mode]').forEach(b => b.onclick = () => setMode(b.dataset.mode));
 addEventListener('keydown', e => { if (e.key === 'Escape') { if (G.active) quitGame(); else setMode('orbit'); } });
+
+// Sandbox UI polish: Up/Down zoom, Left/Right orbit around the target, active only while
+// sitting in plain orbit view (mode !== 'orbit' covers both riding a vehicle and G.active
+// game mode, which already claim the arrow keys for flight controls below). Each tap is a
+// fixed step, not a hold-to-continue - deliberate, like clicking Spin, not a teleport. These
+// move camera.position/controls.update() directly rather than going through OrbitControls'
+// own pointer/wheel path, so they never touch the pointerdown listener above and never stop
+// the idle spin.
+const ARROW_ZOOM_FACTOR = 1.12;          // distance multiplier per Up/Down tap
+const ARROW_ORBIT_STEP = Math.PI / 15;   // 12 degrees per Left/Right tap
+const _arrowOffset = new V3();
+addEventListener('keydown', e => {
+  if (mode !== 'orbit') return;
+  if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+    _arrowOffset.copy(camera.position).sub(controls.target);
+    const factor = e.key === 'ArrowUp' ? 1 / ARROW_ZOOM_FACTOR : ARROW_ZOOM_FACTOR;
+    const dist = clamp(_arrowOffset.length() * factor, controls.minDistance, controls.maxDistance);
+    camera.position.copy(controls.target).add(_arrowOffset.setLength(dist));
+    controls.update();
+    e.preventDefault();
+  } else if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+    _arrowOffset.copy(camera.position).sub(controls.target);
+    _arrowOffset.applyAxisAngle(camera.up, e.key === 'ArrowLeft' ? ARROW_ORBIT_STEP : -ARROW_ORBIT_STEP);
+    camera.position.copy(controls.target).add(_arrowOffset);
+    controls.update();
+    e.preventDefault();
+  }
+});
 
 // ---------- games: shared flight, camera, HUD and panels ----------
 // Sky Courier and Sky Raid fly the same plane; each game only adds its rules (GAMES below).

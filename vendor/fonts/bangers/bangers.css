@@ -1,0 +1,8 @@
+/* Bangers, vendored from Google Fonts (latin subset only — the app's UI text is English). */
+@font-face {
+  font-family: 'Bangers';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url(bangers.woff2) format('woff2');
+}

@@ -2,6 +2,19 @@
 
 Newest first.
 
+## 2026-09-23 — P1 AC7 frame-cost baseline: current planet, before resize
+
+- **Baseline measurement for P1 AC7:** The current planet (R=10, 3 cities, all object counts unchanged from F1)
+  matches the configuration used for F1 AC5's frame-cost check. Those measurements serve as the BEFORE baseline
+  for comparing against the after-resize measurements (R=15, 5 cities, ~1.5× object counts).
+- **Desktop, High quality (1024×768 canvas):** 0.94 ms/frame, 785 draw calls. Budget: 16 ms (17× headroom).
+- **Phone emulation, Low quality (375×812 viewport, 1.5 pixel ratio = 562×1218 canvas):** 0.55 ms/frame measured,
+  ×4 CPU-throttle approximation → 2.2 ms/frame. Budget: 33 ms (15× headroom). 361 draw calls.
+- **Method:** Same as F1 AC5: call `LW.frame(dt)` directly in a tight loop (bypassing rAF scheduling) and time
+  with `performance.now()`. This decouples measurement from this browser pane's rAF scheduling quirks and gives
+  a clean per-frame cost. Warm-up: 10 frames. Measurement: 300 frames at 1/60 s dt.
+- **Source:** F1 AC5's frame-cost check, carried forward as the P1 baseline (2026-09-23 entry below).
+
 ## 2026-09-23 — F1 closed; next is P1
 
 - **F1 closed.** Reviewer: CLOSE, all 6 ACs verified, 38/38 checks and a live browser run.

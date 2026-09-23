@@ -2,6 +2,22 @@
 
 Newest first.
 
+## 2026-09-23 — F1 AC5 frame-cost check: measured, not throttled live
+
+- **No CPU-throttle control in this session's browser tooling**, and this pane's own
+  `requestAnimationFrame` is irregularly throttled (a known issue from AC1's test-runner
+  work), so a raw rAF-timed run here is not a trustworthy proxy for real device cost.
+  Measured actual per-frame cost instead: call `LW.frame(dt)` directly in a tight loop
+  (bypasses rAF scheduling) and time it with `performance.now()`, decoupling the
+  measurement from this pane's scheduling quirks.
+- **Desktop, High, 1024×768 canvas:** ~0.94 ms/frame average (budget 16 ms, 17× headroom).
+- **Phone emulation, Low, 375×812 at 1.5 pixel ratio (562×1218 canvas):** ~0.55 ms/frame
+  measured, ×4 as the standard DevTools-CPU-throttle approximation → ~2.2 ms (budget
+  33 ms, 15× headroom even at the pessimistic ×4 estimate).
+- Draw calls: 785 (High) → 361 (Low), confirming AC4's "fewer draw calls" holds at the
+  same time. AC5 passes with wide margin on this machine; a real low-end device could
+  still be slower and is worth a spot-check once the app is actually deployed.
+
 ## 2026-09-23 — Spec and plan approved; names and share image
 
 - **Roadmap, specs and plan approved as written** (ROADMAP.md, PLAN.md, specs/). Build starts with sprint F1.

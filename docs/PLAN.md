@@ -31,7 +31,7 @@
 - [x] Three.js and the Bangers font bundled; no external requests (AC 2)
 - [x] Touch layer: joystick and action buttons; Courier and Raid on touch (AC 3)
 - [x] Quality switch, auto and manual, remembered (AC 4)
-- [ ] Frame-cost check, desktop and throttled phone (AC 5)
+- [x] Frame-cost check, desktop and throttled phone (AC 5)
 - [ ] Metadata, share image, favicon (AC 6)
 
 ### Sprint R2: the fight (after milestone 1)

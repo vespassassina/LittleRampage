@@ -30,7 +30,7 @@
 - [x] tests.html runner; Courier and Raid checks moved into tests/ (AC 1)
 - [x] Three.js and the Bangers font bundled; no external requests (AC 2)
 - [x] Touch layer: joystick and action buttons; Courier and Raid on touch (AC 3)
-- [ ] Quality switch, auto and manual, remembered (AC 4)
+- [x] Quality switch, auto and manual, remembered (AC 4)
 - [ ] Frame-cost check, desktop and throttled phone (AC 5)
 - [ ] Metadata, share image, favicon (AC 6)
 

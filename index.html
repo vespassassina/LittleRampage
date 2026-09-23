@@ -43,6 +43,7 @@
     transform: rotate(-3deg); pointer-events: none;
   }
   #ui { position: fixed; left: 16px; bottom: 16px; display: flex; gap: 8px; flex-wrap: wrap; max-width: calc(100vw - 32px); }
+  #game-buttons { position: fixed; right: 16px; top: 64px; z-index: 2; display: flex; flex-direction: column; gap: 8px; align-items: flex-end; }
   button {
     font: inherit; font-size: 20px; letter-spacing: 1px; color: #000;
     padding: 6px 14px; border: 3px solid #000; border-radius: 10px;
@@ -141,9 +142,11 @@
   <div id="tjoy"><div id="tjoy-knob"></div></div>
   <div id="tfire" hidden>FIRE</div>
 </div>
-<div id="ui">
+<div id="game-buttons">
   <button id="play">Play Sky Courier</button>
   <button id="play-raid">Play Sky Raid</button>
+</div>
+<div id="ui">
   <button data-mode="orbit" class="on">Orbit</button>
   <button data-mode="plane">Ride a plane</button>
   <button data-mode="car">Ride a car</button>
@@ -588,7 +591,13 @@ function addCarInstance(color) {
   const cabIndex = carInstances.cabs.count;
   const wheelIndex = carInstances.wheels.count;
 
-  const carDescriptor = { color, bodyIndex, cabIndex, wheelIndex };
+  // A car has no per-instance Object3D in the scene (its meshes are shared InstancedMeshes),
+  // but the chase camera needs a real Object3D to read position/orientation from
+  // (updateWorldMatrix, localToWorld, matrixWorld - same contract boats and planes use).
+  // This one is never added to the scene or rendered; its transform is kept in sync with
+  // the instance matrix each frame (see the car `movers` closure below).
+  const carDescriptor = new THREE.Object3D();
+  Object.assign(carDescriptor, { color, bodyIndex, cabIndex, wheelIndex });
 
   carInstances.bodies.count++;
   carInstances.bodies.mesh.count = carInstances.bodies.count;
@@ -700,7 +709,7 @@ function buildCity(c) {
     for (let k = 0; k < n; k++) {
       const color = pick([...PALETTE, '#ffffff', '#ffd93d']);
       const carDesc = addCarInstance(color);
-      vehicles.car.push(carDesc);  // store descriptor for tests
+      vehicles.car.push(carDesc);  // phantom Object3D: chase camera target + descriptor for tests
       let s = loop.total * k / n + rr(0, 0.3);
       const speed = rr(0.3, 0.45);
       movers.push((t, dt) => {
@@ -708,6 +717,9 @@ function buildCity(c) {
         const [x, z] = loop.at(s), [x2, z2] = loop.at(s + 0.04);
         const up = c.map(x, z), pos = up.clone().multiplyScalar(top);
         const mat = frameAt(pos, up, c.map(x2, z2).multiplyScalar(top).sub(pos));
+
+        // Keep the phantom chase-camera Object3D in sync with the instance transform.
+        mat.decompose(carDesc.position, carDesc.quaternion, carDesc.scale);
 
         // Update instance matrices for all car parts
         carInstances.bodies.mesh.setMatrixAt(carDesc.bodyIndex, mat);
@@ -1109,7 +1121,7 @@ function openGame(kind) {
   resetPlane();
   parcel.visible = kind === 'courier';
   player.visible = true; mode = 'game'; target = player; controls.enabled = false;
-  $('ui').hidden = true; $('hint').hidden = true; document.querySelector('h1').hidden = true;
+  $('ui').hidden = true; $('game-buttons').hidden = true; $('hint').hidden = true; document.querySelector('h1').hidden = true;
   hud.el.hidden = true; hud.el.dataset.game = kind;
   panel(rules.title, rules.intro, 'Start!');
   updateTouchVisibility();
@@ -1127,7 +1139,7 @@ function quitGame() {
   G.active = G.running = false; G.keys.clear();
   rules.stop();
   player.visible = false;
-  hud.el.hidden = true; $('panel').hidden = true; $('ui').hidden = false; $('hint').hidden = false; document.querySelector('h1').hidden = false;
+  hud.el.hidden = true; $('panel').hidden = true; $('ui').hidden = false; $('game-buttons').hidden = false; $('hint').hidden = false; document.querySelector('h1').hidden = false;
   setMode('orbit');
   updateTouchVisibility();
 }

@@ -534,6 +534,106 @@ function makeCar(color) {
 const vehicles = { car: [], plane: [], boat: [], sat: [] };
 const movers = [];   // functions (t, dt) => void
 
+// ---------- instanced cars ----------
+// Use a reasonable upper bound for car instances (3 cities × ~50 cars per city = ~150)
+const MAX_CARS = 200;
+const carInstances = {
+  bodies: new Map(),  // color -> { mesh, count, instances: [] }
+  cabs: { mesh: null, count: 0 },
+  wheels: { mesh: null, count: 0 },
+  inkBodies: new Map(),
+  inkCabs: { mesh: null, count: 0 },
+  inkWheels: { mesh: null, count: 0 },
+};
+
+function initCarInstancing() {
+  // Create instanced meshes for car parts.
+
+  // Shared cab mesh (all cabins are light blue)
+  const cabMat = toon('#cdefff');
+  const cabGeo = CAR_CAB;
+  carInstances.cabs.mesh = new THREE.InstancedMesh(cabGeo, cabMat, MAX_CARS);
+  carInstances.cabs.mesh.castShadow = true;
+  scene.add(carInstances.cabs.mesh);
+
+  // Shared wheels mesh (all wheels are dark)
+  const wheelMat = toon('#26233a');
+  const wheelGeo = WHEELS;
+  carInstances.wheels.mesh = new THREE.InstancedMesh(wheelGeo, wheelMat, MAX_CARS);
+  carInstances.wheels.mesh.castShadow = true;
+  scene.add(carInstances.wheels.mesh);
+
+  // Ink outlines for cabs and wheels (shared across all cars)
+  const cabInkMat = ink(0.01);
+  const cabInkGeo = hullGeo(CAR_CAB);
+  carInstances.inkCabs.mesh = new THREE.InstancedMesh(cabInkGeo, cabInkMat, MAX_CARS);
+  scene.add(carInstances.inkCabs.mesh);
+
+  const wheelInkMat = ink(0.006);
+  const wheelInkGeo = hullGeo(WHEELS);
+  carInstances.inkWheels.mesh = new THREE.InstancedMesh(wheelInkGeo, wheelInkMat, MAX_CARS);
+  scene.add(carInstances.inkWheels.mesh);
+}
+
+function getOrCreateBodyInstance(color) {
+  if (!carInstances.bodies.has(color)) {
+    const mat = toon(color);
+    const geo = CAR_BODY;
+    const mesh = new THREE.InstancedMesh(geo, mat, MAX_CARS);
+    mesh.castShadow = true;
+    scene.add(mesh);
+    carInstances.bodies.set(color, { mesh, count: 0, instances: [] });
+
+    // Create ink outline for this color
+    const inkMat = ink(0.01);
+    const inkGeo = hullGeo(CAR_BODY);
+    const inkMesh = new THREE.InstancedMesh(inkGeo, inkMat, MAX_CARS);
+    scene.add(inkMesh);
+    carInstances.inkBodies.set(color, { mesh: inkMesh, count: 0 });
+  }
+  return carInstances.bodies.get(color);
+}
+
+function addCarInstance(color) {
+  const bodyData = getOrCreateBodyInstance(color);
+
+  // Allocate instance indices
+  const bodyIndex = bodyData.count;
+  const cabIndex = carInstances.cabs.count;
+  const wheelIndex = carInstances.wheels.count;
+
+  // Track this car
+  const carDescriptor = {
+    color,
+    bodyIndex,
+    cabIndex,
+    wheelIndex,
+  };
+
+  bodyData.instances.push(carDescriptor);
+  bodyData.count++;
+  bodyData.mesh.count = bodyData.count;
+
+  carInstances.cabs.count++;
+  carInstances.cabs.mesh.count = carInstances.cabs.count;
+
+  carInstances.wheels.count++;
+  carInstances.wheels.mesh.count = carInstances.wheels.count;
+
+  // Update ink outline counters and mesh counts
+  const bodyInkData = carInstances.inkBodies.get(color);
+  bodyInkData.count++;
+  bodyInkData.mesh.count = bodyInkData.count;
+
+  carInstances.inkCabs.count++;
+  carInstances.inkCabs.mesh.count = carInstances.inkCabs.count;
+
+  carInstances.inkWheels.count++;
+  carInstances.inkWheels.mesh.count = carInstances.inkWheels.count;
+
+  return carDescriptor;
+}
+
 // ---------- cities ----------
 const world = new Batch();
 const P = 0.85, SW = 0.13;          // block pitch, half street width
@@ -612,19 +712,38 @@ function buildCity(c) {
   loops.forEach((loop, li) => {
     const n = li < 2 ? Math.round(loop.total / 3) : 2;
     for (let k = 0; k < n; k++) {
-      const car = makeCar(pick([...PALETTE, '#ffffff', '#ffd93d']));
-      scene.add(car); vehicles.car.push(car);
+      const color = pick([...PALETTE, '#ffffff', '#ffd93d']);
+      const carDesc = addCarInstance(color);
+      vehicles.car.push(carDesc);  // store descriptor for tests
       let s = loop.total * k / n + rr(0, 0.3);
       const speed = rr(0.3, 0.45);
       movers.push((t, dt) => {
         s += speed * dt;
         const [x, z] = loop.at(s), [x2, z2] = loop.at(s + 0.04);
         const up = c.map(x, z), pos = up.clone().multiplyScalar(top);
-        frameAt(pos, up, c.map(x2, z2).multiplyScalar(top).sub(pos)).decompose(car.position, car.quaternion, car.scale);
+        const mat = frameAt(pos, up, c.map(x2, z2).multiplyScalar(top).sub(pos));
+
+        // Update instance matrices for all car parts
+        const bodyData = carInstances.bodies.get(carDesc.color);
+        bodyData.mesh.setMatrixAt(carDesc.bodyIndex, mat);
+        bodyData.mesh.instanceMatrix.needsUpdate = true;
+        carInstances.inkBodies.get(carDesc.color).mesh.setMatrixAt(carDesc.bodyIndex, mat);
+        carInstances.inkBodies.get(carDesc.color).mesh.instanceMatrix.needsUpdate = true;
+
+        carInstances.cabs.mesh.setMatrixAt(carDesc.cabIndex, mat);
+        carInstances.cabs.mesh.instanceMatrix.needsUpdate = true;
+        carInstances.inkCabs.mesh.setMatrixAt(carDesc.cabIndex, mat);
+        carInstances.inkCabs.mesh.instanceMatrix.needsUpdate = true;
+
+        carInstances.wheels.mesh.setMatrixAt(carDesc.wheelIndex, mat);
+        carInstances.wheels.mesh.instanceMatrix.needsUpdate = true;
+        carInstances.inkWheels.mesh.setMatrixAt(carDesc.wheelIndex, mat);
+        carInstances.inkWheels.mesh.instanceMatrix.needsUpdate = true;
       });
     }
   });
 }
+initCarInstancing();
 CITIES.forEach(buildCity);
 
 // ---------- countryside ----------
@@ -894,7 +1013,7 @@ movers.push((t, dt) => { clouds.rotation.y += dt * 0.012; });
 
 // ---------- controls and camera modes ----------
 const controls = new OrbitControls(camera, renderer.domElement);
-window.LW = { camera, scene, renderer };   // handy from the dev console
+window.LW = { camera, scene, renderer, vehicles, PALETTE };   // handy from the dev console
 controls.enableDamping = true; controls.dampingFactor = 0.06;
 controls.enablePan = false;
 controls.minDistance = R + 0.9; controls.maxDistance = 80;
@@ -1452,6 +1571,8 @@ function frame(fixedDt) {
 // a flaky test rather than a clean failure or a clean pass.
 if (!TEST_MODE) renderer.setAnimationLoop(() => frame());
 LW.frame = frame;
+LW.makeCar = makeCar;   // expose for tests
+LW.addCarInstance = addCarInstance;   // expose for tests
 LW.ready = true;   // last thing set: tests.html polls this before running checks
 </script>
 </body>

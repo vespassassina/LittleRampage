@@ -47,7 +47,7 @@ Epics are grouped by game, not by order; the milestone tag on each sprint says w
 ## Epic: Planet v2 ([spec](specs/planet-v2.md)) — milestone 1
 
 ### Sprint P1: bigger and still fast
-- [ ] Measure and record the frame-cost baseline, desktop and phone (AC 7)
+- [x] Measure and record the frame-cost baseline, desktop and phone (AC 7)
 - [ ] Instanced cars, same look, same routes (AC 5)
 - [ ] R = 15, terrain frequency scaled, heights kept (AC 1)
 - [ ] 5 cities, spaced, off the sea (AC 2)

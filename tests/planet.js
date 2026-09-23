@@ -57,10 +57,76 @@ LW_TESTS.push({
     // City block size: a city's footprint (Lr, in world units) is defined
     // independently of R and reconstructed via cap = atan((Lr+0.32)/HC), so
     // it must come back out exactly the same regardless of R.
-    const expectedLr = [3.4, 2.4, 2.4];
+    // Updated for AC2 (5 cities, task 4): same intent, new set of sizes.
+    const expectedLr = [3.4, 3.0, 2.8, 2.6, 2.4];
     LW.CITIES.forEach((c, i) => {
       if (Math.abs(c.Lr - expectedLr[i]) > 1e-9) {
         throw new Error(`City ${i} block size changed: expected Lr=${expectedLr[i]}, got ${c.Lr}`);
+      }
+    });
+
+    return true;
+  }
+});
+
+LW_TESTS.push({
+  name: 'planet: 5 cities, spaced, off the sea (AC 2)',
+  run(LW) {
+    // AC2: "5 cities, each with traffic on its ring road. No two cities overlap,
+    // none in the sea."
+    const cities = LW.CITIES;
+    if (cities.length !== 5) throw new Error(`Expected 5 cities, got ${cities.length}`);
+
+    // Spec sizes: "5, sized 3.4 / 2.4-3.0" - one capital at 3.4, the rest in 2.4-3.0.
+    const capitals = cities.filter(c => Math.abs(c.Lr - 3.4) < 1e-9);
+    if (capitals.length !== 1) {
+      throw new Error(`Expected exactly one 3.4-sized capital, got ${capitals.length}`);
+    }
+    for (const c of cities) {
+      if (Math.abs(c.Lr - 3.4) < 1e-9) continue;
+      if (c.Lr < 2.4 - 1e-9 || c.Lr > 3.0 + 1e-9) {
+        throw new Error(`City Lr=${c.Lr} outside the spec range 2.4-3.0`);
+      }
+    }
+
+    // No two cities overlap: each city's ring road sits out to `outer` (angular
+    // radius from its centre). Two cities overlap if their centres are closer
+    // together than the sum of their two `outer` radii.
+    for (let i = 0; i < cities.length; i++) {
+      for (let j = i + 1; j < cities.length; j++) {
+        const a = cities[i], b = cities[j];
+        const gap = a.dir.angleTo(b.dir) - (a.outer + b.outer);
+        if (gap <= 0) {
+          throw new Error(
+            `Cities ${i} and ${j} overlap: centre angle ${a.dir.angleTo(b.dir).toFixed(4)} rad, ` +
+            `outer radii sum ${(a.outer + b.outer).toFixed(4)} rad (gap ${gap.toFixed(4)})`
+          );
+        }
+      }
+    }
+
+    // None in the sea: a city's centre must sit on raw (pre-flattening) land, not
+    // just above sea level once the plateau flattening pushes it up artificially.
+    // rawHeight(d) - R > 0 is "above sea"; require a real margin so a city isn't
+    // built right at the waterline.
+    const SEA_MARGIN = 0.15;
+    cities.forEach((c, i) => {
+      const above = LW.rawHeight(c.dir) - LW.R;
+      if (above < SEA_MARGIN) {
+        throw new Error(`City ${i} is in (or at the edge of) the sea: rawHeight - R = ${above.toFixed(4)}`);
+      }
+    });
+
+    // Each city has traffic on its ring road: at least one car within its outer
+    // radius (cars spawn on loops out to c.Lr + 0.14, well inside `outer`). Advance
+    // a frame first so the movers have positioned each car's phantom Object3D.
+    LW.frame(1 / 60);
+    cities.forEach((c, i) => {
+      const carsHere = LW.vehicles.car.filter(
+        car => car.position.clone().normalize().angleTo(c.dir) < c.outer
+      ).length;
+      if (carsHere === 0) {
+        throw new Error(`City ${i} has no traffic within its ring road`);
       }
     });
 

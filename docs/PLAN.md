@@ -50,7 +50,7 @@ Epics are grouped by game, not by order; the milestone tag on each sprint says w
 - [x] Measure and record the frame-cost baseline, desktop and phone (AC 7)
 - [x] Instanced cars, same look, same routes (AC 5)
 - [x] R = 15, terrain frequency scaled, heights kept (AC 1)
-- [ ] 5 cities, spaced, off the sea (AC 2)
+- [x] 5 cities, spaced, off the sea (AC 2)
 - [ ] Camera limits, start view, orbits, moon, atmosphere scaled (AC 3, 4)
 - [ ] Courier and Raid checks pass (AC 8)
 - [ ] Quality auto-switch checks made behavioural: feed slow frame times, expect Low; fast, expect High (F1 review)

@@ -223,10 +223,19 @@ function fbm(x, y, z, oct) {
 }
 
 // ---------- cities (defined first: they flatten the terrain) ----------
+// planet-v2 AC2: 5 cities, sized 3.4 / 2.4-3.0, none overlapping, none in the sea.
+// Directions are hand-picked (as the original 3 were): searched for points with
+// rawHeight(dir) - R comfortably positive (on land, not just above the 0 threshold)
+// and pairwise angular separation well past outer+outer (no two ring roads touch).
+// The old city 0 and city 2 sat in the sea at R=15 (rawHeight - R of -0.47 and
+// +0.01) - the plateau flattening hid it, but AC2 now checks the raw terrain
+// under the centre, so all 5 positions below are new, not just the 2 additions.
 const CITIES = [
-  { dir: new V3(0.35, 0.75, 0.55).normalize(), Lr: 3.4 },
-  { dir: new V3(-0.8, -0.1, 0.6).normalize(), Lr: 2.4 },
-  { dir: new V3(0.25, -0.55, -0.8).normalize(), Lr: 2.4 },
+  { dir: new V3(0.806, 0.043, -0.590).normalize(), Lr: 3.4 },
+  { dir: new V3(-0.826, -0.049, 0.562).normalize(), Lr: 3.0 },
+  { dir: new V3(0.556, -0.341, 0.759).normalize(), Lr: 2.8 },
+  { dir: new V3(-0.200, -0.909, -0.365).normalize(), Lr: 2.6 },
+  { dir: new V3(0.148, 0.951, 0.270).normalize(), Lr: 2.4 },
 ];
 for (const c of CITIES) {
   Object.assign(c, planeMap(c.dir, HC));
@@ -545,7 +554,7 @@ const vehicles = { car: [], plane: [], boat: [], sat: [] };
 const movers = [];   // functions (t, dt) => void
 
 // ---------- instanced cars ----------
-// Use a reasonable upper bound for car instances (3 cities × ~50 cars per city = ~150)
+// Use a reasonable upper bound for car instances (5 cities × ~30 cars per city, worst case)
 const MAX_CARS = 200;
 // One InstancedMesh per car part (body, cab, wheels) plus one per ink outline: 6 draw
 // calls total, however many cars or car colors are on the road. Bodies used to get a
@@ -1229,7 +1238,7 @@ function gameStep(dt, t) {
 
 // ---------- Sky Courier (see docs/specs/sky-courier.md) ----------
 const TOWNS = [
-  ...CITIES.map((c, i) => ({ name: ['Pop Town', 'Zap City', 'Boomville'][i], dir: c.dir })),
+  ...CITIES.map((c, i) => ({ name: ['Pop Town', 'Zap City', 'Boomville', 'Fizzdale', 'Rocket Bluff'][i], dir: c.dir })),
   ...HAMLETS.filter((d, i) => i % 8 === 0).slice(0, 5)
     .map((d, i) => ({ name: ['Mapleton', 'Puddle Bay', 'Windy Hill', 'Cloudford', 'Snug Harbor'][i], dir: d })),
 ];

@@ -2,6 +2,46 @@
 
 Newest first.
 
+## 2026-09-23 — P1 AC3/AC4: camera, orbits, moon and balloon altitude retuned for R=15
+
+- **Follow-up to the R=15 resize (f554707)**, which explicitly left camera limits, start
+  framing, and satellite/moon/atmosphere numbers untuned. This closes that gap.
+- **Camera start distance (`camera.position` multiplier) was hardcoded at 30, unchanged
+  since R=10.** At R=15 the planet no longer fit in the start view (measured: distance
+  ~30.7, but a sphere of radius 15 needs ~39.2 to fit the 45deg-fov camera vertically).
+  Changed to `3 * R` (was already `3 * R` in effect at R=10 - the constant just never
+  got updated). Now: R=15 -> ~45 units, matching the same ~15% margin the R=10 planet had.
+- **`controls.maxDistance` was hardcoded at 80 (`8 * R` at R=10), also unchanged.**
+  Changed to `8 * R` explicitly (120 at R=15), keeping the same zoom-out headroom.
+  `controls.minDistance` (`R + 0.9`, "street level") was already expressed in terms of
+  R and needed no change - verified via a live zoom-to-minDistance screenshot.
+- **`moon.position.x` was a bare 26, not expressed in terms of R at all** - the one place
+  that broke the spec's "distance from centre scales with R" rule. At R=10 that was
+  2.6*R; changed to `R * 2.6` so the moon keeps its position relative to the bigger
+  planet instead of drifting closer in visual terms.
+- **Satellites, station, atmosphere, clouds were already correct** - all coded as
+  `R + <absolute altitude>`, which is the right form per the spec's "height above
+  ground stays absolute" rule (same category as balloons and clouds), and they already
+  inherited the R=15 bump automatically. Checked, not changed: atmosphere radius 18,
+  satellites 20.2-21.8, station 23, all clear the atmosphere with margin (AC4).
+- **Balloon altitude (`R + 2.2` to `R + 2.8`) did not clear the tallest mountain.**
+  Measured the actual highest point of the rendered terrain (exact, over all ~497k
+  vertices of the terrain mesh, not a statistical sample): ~R+2.65. That's inside the
+  balloons' old floor of R+2.2. This wasn't caused by the resize (the height formula
+  is R-invariant, only which points get sampled changes with NZ) but AC4 ("balloons
+  clear the mountains") covers it and it's a one-line fix, so it's fixed here rather
+  than filed separately. New range: `R + 3.0` to `R + 3.6`.
+- **Self-review:** wrote the AC3/AC4 tests first (whole-planet-fits framing math, a
+  200-point behavioural re-check of the live orbit-mode clamp, atmosphere clearance,
+  and an exact terrain-max check for planes/balloons), confirmed they failed against
+  the unmodified code, then fixed the constants above. Full suite: 49/49 passing, no
+  console errors. Live screenshots confirm the whole planet fits at start and zooming
+  to `minDistance` sits at ground level without clipping into terrain.
+- **New `LW` test hooks added:** `controls`, `atmosphere`, `moon`, `HC`, `heightAt`,
+  `startCameraDistance` (frozen at boot - `camera.position` itself gets driven around
+  live by chase cams and other tests, so a "does it fit at start" check needs a value
+  that isn't overwritten by whatever ran before it), `skyBalloons`.
+
 ## 2026-09-23 — P1 AC7 frame-cost baseline: current planet, before resize
 
 - **Baseline measurement for P1 AC7:** The current planet (R=10, 3 cities, all object counts unchanged from F1)

@@ -135,6 +135,139 @@ LW_TESTS.push({
 });
 
 LW_TESTS.push({
+  name: 'planet: whole planet fits in the start view (AC 3)',
+  run(LW) {
+    // AC3: "Orbit view: the whole planet fits at start..."
+    // A sphere of radius R, viewed from distance d with a perspective camera of half
+    // vertical fov hV and half horizontal fov hH, is fully inside the frustum once
+    // d >= R / sin(min(hV, hH)) - the tighter of the two axes decides. This must hold
+    // at whatever distance the camera actually starts at.
+    // camera.position itself gets driven all over the place by other tests (chase
+    // cams, the terrain-clamp test below) since they all share one running app
+    // instance - use the frozen distance index.html recorded right after placing
+    // the camera at boot, not the live (possibly-mutated) position.
+    const camDist = LW.startCameraDistance;
+    const halfV = (LW.camera.fov * Math.PI / 180) / 2;
+    const halfH = Math.atan(Math.tan(halfV) * LW.camera.aspect);
+    const minFitDist = LW.R / Math.sin(Math.min(halfV, halfH));
+    if (camDist < minFitDist) {
+      throw new Error(
+        `Planet does not fit at the start camera distance: camDist=${camDist.toFixed(2)}, ` +
+        `needs >= ${minFitDist.toFixed(2)} (R=${LW.R}, fov=${LW.camera.fov}, aspect=${LW.camera.aspect.toFixed(3)})`
+      );
+    }
+    return true;
+  }
+});
+
+LW_TESTS.push({
+  name: 'planet: zoom reaches street level (AC 3)',
+  run(LW) {
+    // AC3: "...zoom reaches street level..." The orbit camera's closest allowed
+    // distance should put it just above the ground, not stuck high up.
+    const altAboveGround = LW.controls.minDistance - LW.R;
+    if (altAboveGround > 2) {
+      throw new Error(
+        `Zoom does not reach street level: minDistance=${LW.controls.minDistance} is ` +
+        `${altAboveGround.toFixed(2)} above sea level (R=${LW.R}), expected <= 2`
+      );
+    }
+    if (altAboveGround <= 0) {
+      throw new Error(`controls.minDistance (${LW.controls.minDistance}) is at or below R (${LW.R}) - would clip terrain`);
+    }
+    return true;
+  }
+});
+
+LW_TESTS.push({
+  name: 'planet: orbit camera never goes inside terrain or buildings (AC 3, 200 points)',
+  run(LW) {
+    // AC3: "...the camera never goes inside terrain or buildings (sampled at 200
+    // random points)." Drive the actual frame() clamp (index.html's `floor` logic in
+    // orbit mode, lines ~1551-1561): drop the camera just above sea level at a random
+    // direction - almost certainly under the local terrain or a building - and check
+    // the real per-frame clamp pushed it back out, the same way it does live.
+    LW.games.quit();   // make sure we're in orbit mode, not mid-game
+    let checked = 0;
+    for (let i = 0; i < 200; i++) {
+      const u = Math.random() * 2 - 1, t = Math.random() * Math.PI * 2, s = Math.sqrt(1 - u * u);
+      const dir = new LW.V3(s * Math.cos(t), u, s * Math.sin(t));
+      LW.camera.position.copy(dir).multiplyScalar(LW.R * 0.5);   // start deep inside the planet
+      LW.frame(1 / 60);
+      const dist = LW.camera.position.length();
+
+      // Mirror index.html's own orbit-mode clamp (frame(), lines ~1556-1560) exactly,
+      // rather than re-deriving it, so this checks the real floor the live code uses:
+      // terrain (post city-flattening) plus a margin, raised further near a city to
+      // clear its tallest building.
+      let floor = Math.max(LW.heightAt(dir), LW.R) + 0.25;
+      for (const c of LW.CITIES) if (dir.angleTo(c.dir) < c.cap + 0.05) floor = Math.max(floor, LW.HC + c.maxH + 0.3);
+      if (dist < floor - 0.01) {
+        throw new Error(`Camera ended up inside terrain or a building at sample ${i}: dist=${dist.toFixed(3)}, floor=${floor.toFixed(3)}`);
+      }
+      checked++;
+    }
+    if (checked !== 200) throw new Error(`Expected to check 200 points, checked ${checked}`);
+    return true;
+  }
+});
+
+LW_TESTS.push({
+  name: 'planet: satellites, station and moon clear the atmosphere (AC 4)',
+  run(LW) {
+    // AC4: "Satellites, station and moon clear the atmosphere..."
+    // orbit() and the moon's pivot only rotate (no translation), so an object's
+    // distance from the planet's centre is exactly its local position.y (or .x for
+    // the moon) - no world-matrix update needed.
+    const atmosphereR = LW.atmosphere.geometry.parameters.radius;
+    LW.vehicles.sat.forEach((obj, i) => {
+      const dist = obj.position.y;
+      if (dist <= atmosphereR) {
+        throw new Error(`Satellite/station ${i} at distance ${dist.toFixed(2)} does not clear the atmosphere (radius ${atmosphereR})`);
+      }
+    });
+    const moonDist = Math.abs(LW.moon.position.x);
+    if (moonDist <= atmosphereR) {
+      throw new Error(`Moon at distance ${moonDist.toFixed(2)} does not clear the atmosphere (radius ${atmosphereR})`);
+    }
+    return true;
+  }
+});
+
+LW_TESTS.push({
+  name: 'planet: planes and balloons clear the mountains (AC 4)',
+  run(LW) {
+    // AC4: "...planes and balloons clear the mountains." Estimate the tallest peak by
+    // densely sampling the actual rendered terrain height (post city-flattening) over
+    // a deterministic, evenly-spread set of directions (a Fibonacci sphere, so it's
+    // not flaky like Math.random() sampling would be) and taking the max.
+    const N = 20000, GA = Math.PI * (3 - Math.sqrt(5));   // golden angle
+    let maxHeight = -Infinity;
+    for (let i = 0; i < N; i++) {
+      const y = 1 - (i / (N - 1)) * 2, r = Math.sqrt(Math.max(0, 1 - y * y)), a = GA * i;
+      const dir = new LW.V3(Math.cos(a) * r, y, Math.sin(a) * r);
+      const h = LW.heightAt(dir);
+      if (h > maxHeight) maxHeight = h;
+    }
+
+    LW.vehicles.plane.forEach((p, i) => {
+      if (p.position.y <= maxHeight) {
+        throw new Error(`Plane ${i} at altitude ${p.position.y.toFixed(2)} does not clear the tallest mountain (${maxHeight.toFixed(2)})`);
+      }
+    });
+    // Balloons bob by +-0.12 around their base altitude (index.html's sinusoidal
+    // mover) - check the low point of that bob, not just the instantaneous position.
+    LW.skyBalloons.forEach((b, i) => {
+      const low = b.position.y - 0.12;
+      if (low <= maxHeight) {
+        throw new Error(`Balloon ${i} can dip to ${low.toFixed(2)}, which does not clear the tallest mountain (${maxHeight.toFixed(2)})`);
+      }
+    });
+    return true;
+  }
+});
+
+LW_TESTS.push({
   name: 'planet: cars are instanced (AC 5)',
   run(LW) {
     // Verify cars exist in the scene

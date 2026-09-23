@@ -277,9 +277,13 @@ const scene = new THREE.Scene();
   scene.background.colorSpace = THREE.SRGBColorSpace;
 }
 const camera = new THREE.PerspectiveCamera(45, innerWidth / innerHeight, 0.05, 1000);
-camera.position.copy(CITIES[0].dir).multiplyScalar(30).add(new V3(4, 6, 8));
+// Start distance scales with R (planet-v2 AC3: whole planet fits at start). 3*R gave
+// the old R=10 planet (30 units) a comfortable margin over its fit distance; the same
+// multiplier keeps that margin at R=15.
+camera.position.copy(CITIES[0].dir).multiplyScalar(3 * R).add(new V3(4, 6, 8));
 if (camera.aspect < 1) camera.position.multiplyScalar(0.8 / camera.aspect);   // fit the planet on a portrait phone
 scene.add(camera);
+const START_CAMERA_DISTANCE = camera.position.length();   // frozen for tests (AC3): camera.position itself gets driven around by later tests
 
 scene.add(new THREE.AmbientLight('#bdb6ff', 1.0));
 const sun = new THREE.DirectionalLight('#fff4dc', 2.3);
@@ -906,13 +910,17 @@ function makeBalloon(color, tex = stripes(color, '#ffffff')) {
   b.add(env, inked(SKIRT, toon(color), 0.01), inked(BASKET, toon('#b07a4a'), 0.008));
   return b;
 }
+const skyBalloons = [];   // decorative hot-air balloons (not tests/raid.js's target balloons)
 for (let k = 0; k < 4; k++) {
   const pivot = new THREE.Object3D();
   pivot.quaternion.setFromUnitVectors(UP, randomDir());
   const b = makeBalloon(PALETTE[k]);
-  const alt = rr(R + 2.2, R + 2.8);
+  // planet-v2 AC4: balloons must clear the mountains. The true tallest peak on the
+  // terrain mesh sits at ~R+2.65 (measured over every vertex of the icosphere); give
+  // balloons a floor above that instead of the old R+2.2, which could clip a summit.
+  const alt = rr(R + 3.0, R + 3.6);
   b.position.y = alt;
-  pivot.add(b); scene.add(pivot);
+  pivot.add(b); scene.add(pivot); skyBalloons.push(b);
   const w = rr(0.01, 0.02), ph = rr(0, 6);
   movers.push((t, dt) => { pivot.rotateX(w * dt); b.position.y = alt + Math.sin(t * 0.8 + ph) * 0.12; });
 }
@@ -1011,7 +1019,7 @@ scene.add(clouds);
 movers.push((t, dt) => { clouds.rotation.y += dt * 0.012; });
 
 // ---------- moon ----------
-{
+const moon = (() => {
   const pivot = new THREE.Object3D(); pivot.rotation.z = 0.35;
   const moon = inked(new THREE.SphereGeometry(1.4, 32, 24), toon('#f4efd8'), 0.12);
   for (let i = 0; i < 7; i++) {
@@ -1020,16 +1028,20 @@ movers.push((t, dt) => { clouds.rotation.y += dt * 0.012; });
     crater.position.copy(d).multiplyScalar(1.33); crater.scale.set(s, s, s);
     moon.add(crater);
   }
-  moon.position.x = 26; pivot.add(moon); scene.add(pivot);
+  // Distance from the planet's centre scales with R (planet-v2 rule): the moon sat
+  // at 26 = 2.6*R when R was 10; keep that same ratio so it doesn't creep inward
+  // relative to the bigger planet.
+  moon.position.x = R * 2.6; pivot.add(moon); scene.add(pivot);
   movers.push((t, dt) => { pivot.rotation.y += dt * 0.03; moon.rotation.y += dt * 0.1; });
-}
+  return moon;
+})();
 
 // ---------- controls and camera modes ----------
 const controls = new OrbitControls(camera, renderer.domElement);
 window.LW = { camera, scene, renderer, vehicles, PALETTE };   // handy from the dev console
 controls.enableDamping = true; controls.dampingFactor = 0.06;
 controls.enablePan = false;
-controls.minDistance = R + 0.9; controls.maxDistance = 80;
+controls.minDistance = R + 0.9; controls.maxDistance = 8 * R;   // maxDistance scales with R, same as start distance
 controls.autoRotate = !TEST_MODE; controls.autoRotateSpeed = 0.35;
 
 const spinBtn = document.getElementById('spin');
@@ -1587,10 +1599,17 @@ LW.frame = frame;
 LW.R = R;               // expose for tests (planet-v2 AC1)
 LW.NZ = NZ;
 LW.rawHeight = rawHeight;
+LW.heightAt = heightAt;   // expose for tests (planet-v2 AC3/AC4: the actual rendered terrain height, post city-flattening)
 LW.CITIES = CITIES;
 LW.makeCar = makeCar;   // expose for tests
 LW.addCarInstance = addCarInstance;   // expose for tests
 LW.setCarsVisible = setCarsVisible;   // expose for tests: measure traffic's own draw-call cost
+LW.controls = controls;   // expose for tests (planet-v2 AC3: zoom limits)
+LW.startCameraDistance = START_CAMERA_DISTANCE;   // expose for tests (planet-v2 AC3: fits at start)
+LW.atmosphere = atmosphere;   // expose for tests (planet-v2 AC4: clears atmosphere)
+LW.moon = moon;
+LW.HC = HC;
+LW.skyBalloons = skyBalloons;
 LW.ready = true;   // last thing set: tests.html polls this before running checks
 </script>
 </body>

@@ -11,7 +11,8 @@ Each wave is harder than the last.
 - Audience: anyone, on a desktop browser.
 - In: a Play Sky Raid button, a training round, guns, bombs, cartoon explosions, enemy waves,
   lives, a score, a best score, and start and end screens.
-- Out, for now: touch controls, sound, power-ups, boss fights.
+- Out, for now: sound, power-ups, boss fights.
+- Touch: the shared joystick steers; Fire and Bomb buttons on the right.
 - Sky Courier and the sandbox stay as they are. Both games run on the same flight, camera, HUD and panel code; only the rules differ.
 - Tone: comic, not gory. A hit shows a "BOOM!" burst and ink smoke. Nobody is shown hurt.
 
@@ -47,7 +48,8 @@ Each wave is harder than the last.
 7. An enemy shot hitting you costs one life and gives 2 s of invulnerability. At 0 lives
    the end screen shows the score, the wave and the best score. The best score is still there after a reload.
 8. Esc or Quit returns to the sandbox. Every destroyed civilian is back.
-   Sky Courier still works.
+   Sky Courier still works. All checks in tests.html pass.
+10. On phone emulation, joystick, Fire and Bomb all work at the same time.
 9. No console errors. Shots and bursts are pooled: the scene's object count is the same
    before and after a long burst of firing. (A draw-call cap was dropped: the sandbox
    already draws about 785 calls in the full orbit view.)

@@ -24,16 +24,27 @@
 - [x] POP and BOOM bursts, pooled (AC 2, 9)
 - [x] Training done: panel for now, wave 1 in sprint 2
 
+## Epic: Foundations ([spec](specs/foundations.md)) — milestone F
+
+### Sprint F1: ready to publish
+- [ ] tests.html runner; Courier and Raid checks moved into tests/ (AC 1)
+- [ ] Three.js and the Bangers font bundled; no external requests (AC 2)
+- [ ] Touch layer: joystick and action buttons; Courier and Raid on touch (AC 3)
+- [ ] Quality switch, auto and manual, remembered (AC 4)
+- [ ] Frame-cost check, desktop and throttled phone (AC 5)
+- [ ] Metadata, share image, favicon (AC 6)
+
 ### Sprint R2: the fight (after milestone 1)
 - [ ] Enemy planes chase, shoot; lives, blink, end screen, best score (AC 7)
 - [ ] Waves with rising speed, count and fire rate (AC 6)
 - [ ] Guns hit civilian planes; bombs hit cars and boats and buildings; respawn and restore on quit (AC 4, 5, 8)
 - [ ] Retune for the bigger planet: balloon spread, enemy spawn distance
+- [ ] Bomb button on touch; checks in tests.html (AC 10)
 
 ## Epic: Planet v2 ([spec](specs/planet-v2.md)) — milestone 1
 
 ### Sprint P1: bigger and still fast
-- [ ] Measure and record the frame-cost baseline (AC 7)
+- [ ] Measure and record the frame-cost baseline, desktop and phone (AC 7)
 - [ ] Instanced cars, same look, same routes (AC 5)
 - [ ] R = 15, terrain frequency scaled, heights kept (AC 1)
 - [ ] 5 cities, spaced, off the sea (AC 2)
@@ -52,12 +63,14 @@
 - [ ] Walk on the sphere, terrain following, sea rules, kaiju camera (AC 2)
 - [ ] Stomp and swipe on destructible scenery and traffic; dust, POW, score (AC 3)
 - [ ] Quit restores everything (AC 9)
+- [ ] Kaiju on touch: joystick walk, Stomp and Swipe buttons (AC 11)
 
 ### Sprint K2: eat and survive
 - [ ] Health, energy, drain, HUD bars (AC 5)
 - [ ] Tiny people: instanced, walk the sidewalks, flee from the kaiju (AC 6 part)
 - [ ] Eat: reach, nearest edible, GULP burst, restore table (AC 4)
 - [ ] Roar and cooldown (AC 6)
+- [ ] Eat and Roar buttons on touch (AC 11)
 
 ### Sprint K3: the army
 - [ ] Heat from score; police cars chase and fire (AC 7)
@@ -70,6 +83,4 @@
 - [ ] Balance pass and frame-cost check at heat 4 (AC 10)
 
 ## Later
-- Touch controls for all three games
 - Sound effects
-- Phone performance pass

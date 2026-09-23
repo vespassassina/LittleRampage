@@ -6,11 +6,11 @@ the army brings you down. You are very tough, but not forever.
 ## Scope
 
 - Goal: a rampage game on the same planet: walk, smash, eat, survive.
-- Audience: anyone, desktop browser first.
+- Audience: anyone, desktop and phone.
 - In: three kaiju with random variations, walking on the sphere, stomp, swipe, eat, roar,
   health and energy, destructible scenery, people who flee, an army that escalates
   (police cars, tanks, jets), score, best score, start and end screens.
-- Out, for now: touch, sound, atomic breath, multiplayer, kaiju vs kaiju.
+- Out, for now: sound, atomic breath, multiplayer, kaiju vs kaiju.
 - Tone: comic. Hits show POW and dust clouds. Eaten things vanish with a GULP! burst.
   People are tiny cartoon figures; nobody is shown hurt.
 
@@ -34,6 +34,7 @@ Height about 1.8 units, the tallest towers are about 2. Speed 1.0 = 0.7 units/s.
 - E: eat. Grabs the nearest person, car, tank or low plane within reach (1.0) and eats it.
 - R: roar. People scatter, the army stops firing for 3 s. Costs 15, 10 s cooldown.
 - Esc: quit.
+- Touch: the shared joystick walks and turns; Stomp, Swipe, Eat and Roar buttons on the right.
 
 ## Rules
 
@@ -71,5 +72,6 @@ Height about 1.8 units, the tallest towers are about 2. Speed 1.0 = 0.7 units/s.
 8. At 0 health the end screen shows score, time, heat and best. Best survives a reload.
 9. Esc or Quit returns to the sandbox with all scenery and traffic restored.
    Sky Courier and Sky Raid still pass their checks.
-10. Two Random runs give different-looking kaiju. No console errors. Frame cost at heat 4
-    stays under 16 ms.
+10. Two Random runs give different-looking kaiju. No console errors. Frame cost at heat 4:
+    desktop High under 16 ms, phone emulation with 4× throttle on Low under 33 ms.
+11. On phone emulation, walking and every move work by touch. All checks in tests.html pass.

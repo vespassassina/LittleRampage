@@ -8,7 +8,8 @@ dropping parcels at towns before the clock runs out.
 - Goal: a two-minute arcade loop that uses the world that's already there.
 - Audience: anyone, on a desktop browser.
 - In: a Play button, a steerable plane, delivery targets, sky rings, a timer, a score, a best score, and start and end screens.
-- Out, for now: touch controls, sound, hazards, levels.
+- Out, for now: sound, hazards, levels.
+- Touch controls: added in the foundations milestone (see foundations.md).
 - The sandbox stays as it is. The game is a mode next to it.
 
 ## Rules

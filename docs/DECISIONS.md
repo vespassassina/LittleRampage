@@ -2,6 +2,14 @@
 
 Newest first.
 
+## 2026-09-23 — Public web app: phones first-class, tests in the repo
+
+- **Every game ships with touch.** Many visitors will be on phones.
+- **Target 60 fps desktop, 30 on a mid-range phone,** with an auto High/Low quality switch.
+- **tests.html runs all checks in the browser.** Still no npm or build; the checks become a regression suite.
+- **Three.js and the font are bundled.** No third-party requests: works if a CDN is down, and nothing leaks to it.
+- **A foundations milestone comes first** for these, before the planet grows.
+
 ## 2026-09-23 — Roadmap: bigger planet, then Sky Raid, then Kaiju
 
 - **Bigger planet first.** Every game depends on its size; doing it later means retuning each game twice.

@@ -30,6 +30,6 @@
 5. Cars are instanced: traffic costs at most 10 draw calls, however many cars there are.
 6. `destroy(building)` hides exactly that building; `restoreScenery()` brings all back.
    Same for a house and a tree.
-7. Frame cost: 60 stepped frames in full orbit view average under 12 ms on this Mac
-   (baseline before the change is measured and recorded first).
-8. Sky Courier and Sky Raid checks still pass. No console errors.
+7. Frame cost in full orbit view (baseline measured and recorded first): desktop High under 16 ms,
+   phone emulation with 4× CPU throttle on Low under 33 ms.
+8. All checks in tests.html pass. No console errors.

@@ -84,3 +84,6 @@
 
 ## Later
 - Sound effects
+- World randomizer: a Generate button rerolls the planet from a seed; the seed is shown
+  and editable, so the same seed reproduces the same world. The seed drives all layers
+  of the generation (terrain, cities, forests, etc.), not just one.

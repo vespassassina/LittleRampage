@@ -415,3 +415,239 @@ LW_TESTS.push({
     return true;
   }
 });
+
+// ========== BEHAVIORAL TESTS (feed frame times, assert quality changes) ==========
+
+LW_TESTS.push({
+  name: 'quality: auto-switch triggers low quality when receiving slow frame times after 3s elapsed',
+  run(LW) {
+    // Reset auto-switch state to test the full flow
+    LW.quality.auto.enabled = false;
+    LW.quality.auto.elapsed = 3.1;  // simulate elapsed time past the 3s gate
+
+    // Set to high quality first
+    LW.quality.set('high');
+    const beforeQuality = LW.quality.get();
+    if (beforeQuality !== 'high') {
+      throw new Error(`Quality should start at high, got ${beforeQuality}`);
+    }
+
+    // Feed a slow frame time (simulating poor performance: ~40ms = 25 fps)
+    const result = LW.quality.auto.checkAuto(30);
+
+    // checkAuto should return 'low' when switching
+    if (result !== 'low') {
+      throw new Error(
+        `checkAuto(30) after 3.1s elapsed should return 'low', got ${result}`
+      );
+    }
+
+    // Quality should now be low
+    const afterQuality = LW.quality.get();
+    if (afterQuality !== 'low') {
+      throw new Error(
+        `After checkAuto(30) triggers auto-switch, quality should be 'low', got ${afterQuality}`
+      );
+    }
+
+    return true;
+  }
+});
+
+LW_TESTS.push({
+  name: 'quality: auto-switch does not trigger with fast frame times',
+  run(LW) {
+    // Reset auto-switch state
+    LW.quality.auto.enabled = false;
+    LW.quality.auto.elapsed = 3.1;
+
+    // Set to high quality
+    LW.quality.set('high');
+
+    // Feed a fast frame time (simulating good performance: 10ms = 100 fps)
+    const result = LW.quality.auto.checkAuto(10);
+
+    // checkAuto should return null when conditions are not met
+    if (result !== null) {
+      throw new Error(
+        `checkAuto(10) with fast frame time should return null, got ${result}`
+      );
+    }
+
+    // Quality should still be high
+    const quality = LW.quality.get();
+    if (quality !== 'high') {
+      throw new Error(
+        `Quality should remain 'high' after fast frame times, got ${quality}`
+      );
+    }
+
+    return true;
+  }
+});
+
+LW_TESTS.push({
+  name: 'quality: auto-switch respects 3-second minimum elapsed time gate',
+  run(LW) {
+    // Reset auto-switch state
+    LW.quality.auto.enabled = false;
+    LW.quality.auto.elapsed = 2.5;  // still under 3 seconds
+
+    // Set to high quality
+    LW.quality.set('high');
+
+    // Feed slow frame times while still under 3 seconds elapsed
+    const result1 = LW.quality.auto.checkAuto(30);
+    const result2 = LW.quality.auto.checkAuto(35);
+
+    // Both should return null because elapsed < 3s
+    if (result1 !== null) {
+      throw new Error(
+        `checkAuto(30) with elapsed=2.5s should return null (not engaged yet), got ${result1}`
+      );
+    }
+
+    if (result2 !== null) {
+      throw new Error(
+        `checkAuto(35) with elapsed=2.5s should return null (not engaged yet), got ${result2}`
+      );
+    }
+
+    // Quality should still be high
+    const quality = LW.quality.get();
+    if (quality !== 'high') {
+      throw new Error(
+        `Quality should stay 'high' while elapsed < 3s, got ${quality}`
+      );
+    }
+
+    return true;
+  }
+});
+
+LW_TESTS.push({
+  name: 'quality: auto-switch only engages once per session (no re-trigger)',
+  run(LW) {
+    // Reset auto-switch state
+    LW.quality.auto.enabled = false;
+    LW.quality.auto.elapsed = 3.1;
+
+    // Set to high quality
+    LW.quality.set('high');
+
+    // First call with slow frames: should trigger
+    const result1 = LW.quality.auto.checkAuto(30);
+    if (result1 !== 'low') {
+      throw new Error(
+        `First checkAuto(30) should trigger 'low', got ${result1}`
+      );
+    }
+
+    // Verify quality is now low
+    if (LW.quality.get() !== 'low') {
+      throw new Error('Quality should be low after first trigger');
+    }
+
+    // Manually set back to high to simulate user toggling or other interaction
+    LW.quality.set('high');
+    if (LW.quality.get() !== 'high') {
+      throw new Error('Manual set to high failed');
+    }
+
+    // Now call checkAuto again with slow frames
+    // It should NOT re-trigger because auto.enabled is now true
+    const result2 = LW.quality.auto.checkAuto(30);
+    if (result2 !== null) {
+      throw new Error(
+        `Second checkAuto(30) should return null (already engaged), got ${result2}`
+      );
+    }
+
+    // Quality should stay high (not switched back by checkAuto)
+    if (LW.quality.get() !== 'high') {
+      throw new Error(
+        `Quality should remain 'high' after auto-switch already fired, got ${LW.quality.get()}`
+      );
+    }
+
+    return true;
+  }
+});
+
+LW_TESTS.push({
+  name: 'quality: auto-switch sequence — slow then fast frames',
+  run(LW) {
+    // This tests a realistic scenario: poor performance starts, then improves
+
+    // Reset auto-switch state
+    LW.quality.auto.enabled = false;
+    LW.quality.auto.elapsed = 3.1;
+    LW.quality.set('high');
+
+    // Simulate sustained slow frames
+    const slowResult = LW.quality.auto.checkAuto(28);
+    if (slowResult !== 'low') {
+      throw new Error(
+        `Slow frame time should trigger low quality, got ${slowResult}`
+      );
+    }
+
+    // Verify quality switched to low
+    if (LW.quality.get() !== 'low') {
+      throw new Error('Quality should be low after slow frames');
+    }
+
+    // Now feed fast frame times (performance improved)
+    // Note: checkAuto does not switch back to high (by design: only once per session)
+    // So we verify it doesn't crash and returns null
+    const fastResult = LW.quality.auto.checkAuto(12);
+    if (fastResult !== null) {
+      throw new Error(
+        `After already engaging, checkAuto(12) should return null, got ${fastResult}`
+      );
+    }
+
+    // Quality should remain low (no automatic switch back)
+    if (LW.quality.get() !== 'low') {
+      throw new Error(
+        `Quality should stay low (auto-switch does not revert), got ${LW.quality.get()}`
+      );
+    }
+
+    return true;
+  }
+});
+
+LW_TESTS.push({
+  name: 'quality: auto-switch boundary — frame time exactly at 25ms threshold',
+  run(LW) {
+    // Test the exact boundary condition: > 25 should trigger, <= 25 should not
+
+    // Reset state
+    LW.quality.auto.enabled = false;
+    LW.quality.auto.elapsed = 3.1;
+    LW.quality.set('high');
+
+    // Test with frame time exactly at 25ms (should NOT trigger, since condition is > 25)
+    const resultAt25 = LW.quality.auto.checkAuto(25);
+    if (resultAt25 !== null) {
+      throw new Error(
+        `checkAuto(25) with condition > 25 should return null, got ${resultAt25}`
+      );
+    }
+
+    // Reset for next part
+    LW.quality.auto.enabled = false;
+    LW.quality.set('high');
+
+    // Test with frame time just above 25ms (should trigger)
+    const resultAbove25 = LW.quality.auto.checkAuto(25.1);
+    if (resultAbove25 !== 'low') {
+      throw new Error(
+        `checkAuto(25.1) with condition > 25 should return 'low', got ${resultAbove25}`
+      );
+    }
+
+    return true;
+  }
+});

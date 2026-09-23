@@ -249,6 +249,43 @@ LW_TESTS.push({
 });
 
 LW_TESTS.push({
+  name: 'raid: training balloons stay reachable in trivial time (P1 AC8: R=15 balance)',
+  game: 'raid',
+  run(LW) {
+    // Sprint P1 grew the planet (R 10 -> 15, 5 cities) without retuning placeBalloons()'s
+    // spread. Verified by hand it still holds (docs/DECISIONS.md: farthest balloon at
+    // R=15 sits ~9.2 units from the start position, popped in 5.4s of real steered
+    // flight) - but placeBalloons() spreads balloons by a FIXED ANGLE around the start
+    // city, so the straight-line distance a player must cover scales with R. Lock down
+    // the invariant a future, bigger resize (P2) could silently break: every balloon
+    // must be reachable within a few seconds of cruise flight, not a training-round-long trek.
+    const $ = id => document.getElementById(id);
+    $('play-raid').click();
+    $('p-go').click();
+
+    const R = LW.raid, G = LW.game;
+    const REACH_SECONDS = 15;   // generous: training should never require more than this to close the distance
+    const maxReachDist = LW.SPEED * REACH_SECONDS;
+
+    let worst = 0;
+    for (const b of R.balloons) {
+      const d = b.mesh.position.distanceTo(LW.player.position);
+      if (d > worst) worst = d;
+    }
+
+    LW.games.quit();
+
+    if (worst > maxReachDist) {
+      throw new Error(
+        `Farthest balloon is ${worst.toFixed(2)} units from the start position, more than ` +
+        `${REACH_SECONDS}s of cruise flight (${maxReachDist.toFixed(2)} units) away`
+      );
+    }
+    return true;
+  }
+});
+
+LW_TESTS.push({
   name: 'raid: AC8 quit restores sandbox state',
   game: 'raid',
   run(LW) {

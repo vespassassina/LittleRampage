@@ -2,6 +2,49 @@
 
 Newest first.
 
+## 2026-09-23 — P1 AC8: Courier and Raid checks pass at R=15 - verified, not retuned
+
+- **Re-verified Sky Courier and Sky Raid gameplay against the bigger planet** (R=15,
+  5 cities, hamlets unchanged): played both live through the LW test API (Playwright,
+  driving real `LW.frame(dt)` steering, not just reading numbers) rather than trusting
+  the existing automated checks alone. Full suite was 49/49 green with no console
+  errors before starting, confirming nothing was already broken.
+- **Sky Courier: no retuning needed.** `newLeg()`'s time bonus is `dist / SPEED *
+  factor + 4`, where `dist` is the angle to the next town times `G.alt` (not `R`) -
+  so it already scales with real travel distance, R included, with no code change.
+  Measured every real leg of a 30-delivery run (teleport-to-target trick, same one
+  `tests/courier.js`'s existing delivery test uses, so each `newLeg()` call fires for
+  real): bonuses ranged 13-47s against arc distances of 7.9-46.6 units (the planet's
+  full min/max town-pair spread). Then flew the single worst-case leg for real -
+  Pop Town to Zap City, 46.6 units, the longest possible delivery on the whole planet -
+  with actual steering (proportional turn toward the HUD bearing, no teleporting):
+  delivered in 30.3s, comfortably inside the ~40s+ bonus that pair grants. The spec's
+  "a run always ends" claim rests on the score-based shrink hitting its 1.15 floor and
+  turning drag costing more than the formula's built-in ~15% + 4s margin - true at
+  R=10 too, not a P1 regression, so left alone; noted here in case a future sprint
+  wants to look at it.
+- **Sky Raid: no retuning needed.** `placeBalloons()` spreads the 8 training balloons
+  by a fixed angle (0.12-0.54 rad) around the start city - angle-based, not
+  distance-based, so it didn't need R-awareness to begin with. At R=15 that puts the
+  farthest balloon 9.2 units from the start position (was proportionally closer at
+  R=10, since arc length = angle x R). Flew a real chase (steer + climb/dive + fire,
+  no teleporting) against that farthest balloon: popped in 5.4s. Trivial.
+- **Added two regression tests** rather than leaving this as a one-off finding, since
+  both mechanics scale with R and a future resize (P2, or later) could silently break
+  either: `tests/courier.js` now asserts every leg's bonus exceeds the straight-line
+  cruise-speed flight time it must cover; `tests/raid.js` now asserts the farthest
+  balloon stays within 15s of cruise flight from the start position. Both use real
+  production numbers (`LW.SPEED`, `LW.R`, actual `TOWNS`/`balloons` positions), not
+  hardcoded distances, so they hold regardless of planet size. Exposed `LW.SPEED` for
+  this (existing precedent: `LW.controls`, `LW.HC`, `LW.skyBalloons`, etc. from the
+  AC3/AC4 entry below).
+- **Full suite: 51/51 passing** (49 existing + 2 new), no console errors.
+- **Method note:** this environment's headless Chromium renders WebGL via software
+  swiftshader, so `LW.frame()` calls are slow (~0.2-0.3s each under sustained load) -
+  the full 51-test suite takes several minutes. Kept the live-play checks above cheap
+  (teleport-to-target for chained legs, a handful of coarser-dt real-flight runs for
+  the one or two worst cases that matter) rather than frame-stepping every leg at 60fps.
+
 ## 2026-09-23 — P1 AC3/AC4: camera, orbits, moon and balloon altitude retuned for R=15
 
 - **Follow-up to the R=15 resize (f554707)**, which explicitly left camera limits, start

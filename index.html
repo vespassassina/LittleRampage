@@ -1483,6 +1483,7 @@ GAMES.raid = {
 LW.game = G;
 LW.V3 = V3;
 LW.player = player;
+LW.SPEED = SPEED;   // expose for tests (P1 AC8: flight speed, cruise-time balance checks)
 LW.games = { open: openGame, start: startRun, quit: quitGame };
 LW.courier = { openGame: () => openGame('courier'), startRun, quitGame, endRun: () => GAMES.courier.end(), rings, TOWNS, skyFloor };
 LW.raid = { balloons, shots, enemies, bursts, fire, shotWorld };

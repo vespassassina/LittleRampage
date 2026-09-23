@@ -82,6 +82,44 @@ LW_TESTS.push({
 });
 
 LW_TESTS.push({
+  name: 'courier: delivery time bonus covers cruise-speed flight time (P1 AC8: R=15 balance)',
+  game: 'courier',
+  run(LW) {
+    // Sprint P1 grew the planet (R 10 -> 15, 3 -> 5 cities) without retuning the
+    // delivery time bonus. Verified by hand that it still holds (docs/DECISIONS.md),
+    // because newLeg()'s bonus is itself proportional to travel distance - but that's
+    // an invariant worth locking down, not just a one-off finding: if a future resize
+    // (or a bonus-formula change) ever grants less time than a straight-line flight at
+    // cruise speed actually costs, a run could end before a leg is even flyable.
+    LW.games.open('courier');
+    LW.games.start();
+    const G = LW.game;
+
+    for (let i = 0; i < 8; i++) {
+      const fromDir = G.town.dir.clone();
+      const timeBefore = G.time;
+      G.p.copy(G.town.dir);   // teleport onto the current target (same trick the delivery test above uses)
+      LW.frame(1 / 60);       // one frame: delivery fires, newLeg() picks the next target and grants its bonus
+      const arcDist = fromDir.angleTo(G.town.dir) * LW.R;
+      const bonus = G.time - timeBefore + 1 / 60;
+      const cruiseFlightTime = arcDist / LW.SPEED;
+
+      if (bonus <= cruiseFlightTime) {
+        LW.games.quit();
+        throw new Error(
+          `Leg ${i}: bonus ${bonus.toFixed(2)}s does not cover a ${arcDist.toFixed(2)}-unit leg's ` +
+          `${cruiseFlightTime.toFixed(2)}s cruise-speed flight time - the next delivery would be unflyable`
+        );
+      }
+      if (G.time <= 0) break;
+    }
+
+    LW.games.quit();
+    return true;
+  }
+});
+
+LW_TESTS.push({
   name: 'courier: delivery increments score',
   game: 'courier',
   run(LW) {

@@ -1,6 +1,7 @@
 # Handoff
 
 Paused 2026-09-23 after planning. Read this first, then delete it when F1 starts.
+Model routing for the work: see the project CLAUDE.md.
 
 ## Done
 

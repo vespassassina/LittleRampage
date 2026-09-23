@@ -2,6 +2,20 @@
 
 Newest first.
 
+## 2026-09-23 — P1 final: quality auto-switch tests made behavioural
+
+- **Rewrote quality auto-switch tests to be behavioral, not structural.** The F1 auto-switch tests only checked that the API exists and returns the right types; they didn't actually feed frame times and assert that quality changed. P1 task required tightening these into real behavioral checks: feed slow frame times (>25ms avg) after 3+ seconds elapsed, and assert `LW.quality.get()` switches to 'low'; feed fast frame times and assert it stays/returns to 'high'.
+- **Six new behavioral tests added** to `tests/quality.js`:
+  1. Auto-switch triggers low when receiving slow frames (30ms) after 3s elapsed
+  2. Auto-switch does not trigger with fast frames (10ms)
+  3. Auto-switch respects the 3-second elapsed-time gate (does not fire before 3s, even with slow frames)
+  4. Auto-switch only engages once per session (no re-trigger after first engagement)
+  5. Realistic scenario: slow frames trigger, then fast frames follow (verifies no automatic revert)
+  6. Boundary condition test: frame time exactly at 25ms vs 25.1ms (ensures > 25, not >= 25)
+- **All existing tests kept.** The existing structural tests (API exists, shape checks, flag presence) are still valuable as smoke tests; behavioral tests layer on top, not replace them.
+- **Full suite: 57/57 passing** (51 existing + 6 new). No console errors. Ready for merge.
+- **Method note:** Tests reset `auto.enabled` and `auto.elapsed` between cases to isolate each scenario (simulating fresh frame times from different points in the session). This is acceptable for unit testing auto-switch logic; the real rAF loop's accumulated timing is tested separately by manual/integration checks.
+
 ## 2026-09-23 — P1 AC8: Courier and Raid checks pass at R=15 - verified, not retuned
 
 - **Re-verified Sky Courier and Sky Raid gameplay against the bigger planet** (R=15,

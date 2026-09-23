@@ -53,7 +53,7 @@ Epics are grouped by game, not by order; the milestone tag on each sprint says w
 - [x] 5 cities, spaced, off the sea (AC 2)
 - [x] Camera limits, start view, orbits, moon, atmosphere scaled (AC 3, 4)
 - [x] Courier and Raid checks pass (AC 8)
-- [ ] Quality auto-switch checks made behavioural: feed slow frame times, expect Low; fast, expect High (F1 review)
+- [x] Quality auto-switch checks made behavioural: feed slow frame times, expect Low; fast, expect High (F1 review)
 
 ### Sprint P2: fill it and make it breakable
 - [ ] More hamlets, trees, boats, planes, balloons, satellites, clouds by area (spec rules)

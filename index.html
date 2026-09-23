@@ -134,6 +134,7 @@
   <button data-mode="boat">Ride a boat</button>
   <button data-mode="sat">Visit space</button>
   <button id="spin" class="on">Spin</button>
+  <button id="qbtn">Quality: High</button>
 </div>
 
 <script type="module">
@@ -312,6 +313,9 @@ function inked(geo, mat, maxW = 0.03) {
 }
 
 // Static things are merged per material: a few dozen draw calls for a whole world.
+// ALL_INK_MESHES holds every merged outline mesh with its ink width, so the quality
+// switch can drop thin outlines (e.g. tree trunks) under a size threshold in low mode.
+const ALL_INK_MESHES = [];
 class Batch {
   constructor() { this.byMat = new Map(); this.byInk = new Map(); }
   add(geo, mat, matrix, maxW = 0.03) {
@@ -326,7 +330,11 @@ class Batch {
   }
   build(parent) {
     for (const [mat, geos] of this.byMat) parent.add(new THREE.Mesh(mergeGeometries(geos), mat));
-    for (const [w, geos] of this.byInk) parent.add(new THREE.Mesh(mergeGeometries(geos), ink(w)));
+    for (const [w, geos] of this.byInk) {
+      const m = new THREE.Mesh(mergeGeometries(geos), ink(w));
+      parent.add(m);
+      ALL_INK_MESHES.push({ mesh: m, w });
+    }
   }
 }
 
@@ -1330,12 +1338,66 @@ addEventListener('resize', () => {
   renderer.setSize(innerWidth, innerHeight);
 });
 
+// ---------- quality (AC 4: High/Low performance switch) ----------
+// Low: halves traffic, drops thin ink outlines, caps pixel ratio at 1.5.
+const QUALITY_KEY = 'lw-quality', LOW_INK_MAXW = 0.015;
+function loadQuality() {
+  try {
+    const v = localStorage.getItem(QUALITY_KEY);
+    return (v === 'low' || v === 'high') ? v : 'high';
+  } catch { return 'high'; }   // storage blocked: default to high for this visit only
+}
+let qualityLevel = loadQuality();
+const qbtn = $('qbtn');
+
+function applyQuality(level) {
+  qualityLevel = level;
+  const low = level === 'low';
+  renderer.setPixelRatio(low ? Math.min(devicePixelRatio, 1.5) : Math.min(devicePixelRatio, 2));
+  // Halve traffic, but never hide whatever vehicle the camera is currently chasing.
+  for (const key of ['car', 'boat', 'plane']) {
+    vehicles[key].forEach((v, i) => { v.visible = !low || i % 2 === 0 || v === target; });
+  }
+  for (const { mesh, w } of ALL_INK_MESHES) mesh.visible = !low || w >= LOW_INK_MAXW;
+  if (qbtn) { qbtn.textContent = `Quality: ${low ? 'Low' : 'High'}`; qbtn.classList.toggle('on', low); }
+}
+
+LW.quality = {
+  get: () => qualityLevel,
+  set(level) {
+    applyQuality(level);
+    try { localStorage.setItem(QUALITY_KEY, level); } catch { /* not saved: session-only */ }
+  },
+  auto: {
+    enabled: false,   // fires at most once per session
+    elapsed: 0,       // seconds since load, ticked by the real loop below
+    // Pure-ish: called with a measured avg frame time. Switches to low once, past the
+    // 3s warm-up window, if frames are running slower than 25ms on average.
+    checkAuto(avgFrameMs) {
+      if (this.enabled || this.elapsed < 3) return null;
+      if (avgFrameMs > 25) { LW.quality.set('low'); this.enabled = true; return 'low'; }
+      return null;
+    },
+  },
+};
+if (qbtn) qbtn.onclick = () => LW.quality.set(LW.quality.get() === 'low' ? 'high' : 'low');
+applyQuality(qualityLevel);
+
 // ---------- loop ----------
 const clock = new THREE.Clock();
 const tmp = new V3(), tmp2 = new V3();
+let avgFrameMs = 16;   // rolling estimate, fed to the auto quality switch
 function frame(fixedDt) {
   const dt = fixedDt ?? Math.min(clock.getDelta(), 0.05), t = clock.elapsedTime;
   for (const f of movers) f(t, dt);
+
+  // Real auto-switch: only on real gameplay frames (not test-driven fixed steps),
+  // and only on touch/coarse-pointer devices per spec — desktop never auto-switches.
+  if (!TEST_MODE && fixedDt === undefined) {
+    avgFrameMs += (dt * 1000 - avgFrameMs) * 0.1;
+    LW.quality.auto.elapsed += dt;
+    if (window.matchMedia('(pointer: coarse)').matches) LW.quality.auto.checkAuto(avgFrameMs);
+  }
   if (mode === 'game') gameStep(dt, t);
 
   let alt = camera.position.length() - R;

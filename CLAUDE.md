@@ -10,13 +10,16 @@ The main session runs on Sonnet and drives the sprint loop in `docs/PLAN.md`. It
 |---|---|---|
 | Failing check first, run tests.html, browser checks, ticking tasks, docs chores | `tester` | Haiku |
 | Implementing a task until its checks pass | `coder` | Sonnet |
-| Closing a task against its spec | `reviewer` | Sonnet |
-| Decisions, scope conflicts, re-planning, sprint reviews | `developer` | Opus 5.5 |
+| Sprint-end review: the sprint's diff against its spec | `reviewer` | Sonnet |
+| Decisions, scope conflicts, re-planning after the sprint review | `developer` | Opus 5.5 |
 | Hard bugs: not fixed after two tries, or rendering, performance or camera bugs with no clear cause | `developer`, with `/investigate` | Opus 5.5 |
 
 Loop per task: tester writes the failing check → coder makes it pass → tester runs all checks
-and a real browser run → reviewer closes. Anything that needs judgement goes to `developer`;
-don't save cost on judgement.
+and a real browser run → the task is ticked and committed. No review per task.
+
+Sprint end: `reviewer` reviews the whole sprint once (this replaces the global rule of a `/review`
+before every behaviour-changing commit), then `developer` re-plans. Anything that needs
+judgement goes to `developer`; don't save cost on judgement.
 
 ## Project rules
 

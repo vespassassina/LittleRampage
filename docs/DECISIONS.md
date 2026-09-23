@@ -2,6 +2,13 @@
 
 Newest first.
 
+## 2026-09-23 — Roadmap: bigger planet, then Sky Raid, then Kaiju
+
+- **Bigger planet first.** Every game depends on its size; doing it later means retuning each game twice.
+- **More world, not a zoomed world.** Radius ×1.5, objects keep their size, counts scale with area.
+- **Destructible scenery and instanced traffic are shared foundations**, built with the planet, used by Kaiju and Sky Raid.
+- **Kaiju: rampage until health runs out.** Stomp, swipe, eat, roar; three kaiju with random variations. No atomic breath, by choice.
+
 ## 2026-09-23 — Sky Raid, sprint 1: training round
 
 - **Both games share one flight core.** Plane, camera, HUD, panels and best score are common; each game is a small rules object (`GAMES.courier`, `GAMES.raid`) with start, stop, step and end. Asked for: "keep same code".

@@ -2,6 +2,14 @@
 
 Newest first.
 
+## 2026-09-23 — Spec and plan approved; names and share image
+
+- **Roadmap, specs and plan approved as written** (ROADMAP.md, PLAN.md, specs/). Build starts with sprint F1.
+- **Original kaiju names: Scalezor, Bonkers, Shellback.** The app goes public; names close to Godzilla and King Kong invite trouble.
+- **Share image and favicon are rendered from the planet itself.** No separate logo.
+- **`main` is the default branch** on the private GitHub repo vespassassina/Rampage. Work happens on `<type>/<topic>` branches off it.
+- **Open:** the app is called Little Worlds, the repo Rampage. Not renamed; ask before changing.
+
 ## 2026-09-23 — Public web app: phones first-class, tests in the repo
 
 - **Every game ships with touch.** Many visitors will be on phones.

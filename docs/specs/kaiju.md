@@ -20,7 +20,7 @@ Chosen on the start screen, or Random. Each run randomises colours, spikes and s
 
 | Kaiju | Build | Speed | Health | Swipe | Special trait |
 |---|---|---|---|---|---|
-| Gorzilla | lizard, tail, back plates | 1.0 | 100 | tail, wide arc behind | balanced |
+| Scalezor | lizard, tail, back plates | 1.0 | 100 | tail, wide arc behind | balanced |
 | Bonkers | giant ape | 1.3 | 75 | fists, strong, narrow | eats faster |
 | Shellback | spiky turtle | 0.7 | 150 | shell spin, all around | takes half damage from tanks |
 

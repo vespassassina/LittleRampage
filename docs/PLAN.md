@@ -59,7 +59,7 @@
 ## Epic: Kaiju ([spec](specs/kaiju.md)) — milestone 3
 
 ### Sprint K1: a giant that walks and smashes
-- [ ] Play Kaiju, start screen, one kaiju (Gorzilla) (AC 1)
+- [ ] Play Kaiju, start screen, one kaiju (Scalezor) (AC 1)
 - [ ] Walk on the sphere, terrain following, sea rules, kaiju camera (AC 2)
 - [ ] Stomp and swipe on destructible scenery and traffic; dust, POW, score (AC 3)
 - [ ] Quit restores everything (AC 9)

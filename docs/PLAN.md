@@ -48,7 +48,7 @@ Epics are grouped by game, not by order; the milestone tag on each sprint says w
 
 ### Sprint P1: bigger and still fast
 - [x] Measure and record the frame-cost baseline, desktop and phone (AC 7)
-- [ ] Instanced cars, same look, same routes (AC 5)
+- [x] Instanced cars, same look, same routes (AC 5)
 - [ ] R = 15, terrain frequency scaled, heights kept (AC 1)
 - [ ] 5 cities, spaced, off the sea (AC 2)
 - [ ] Camera limits, start view, orbits, moon, atmosphere scaled (AC 3, 4)

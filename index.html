@@ -35,7 +35,7 @@
   }
   canvas { display: block; position: fixed; inset: 0; }
   #halftone { z-index: 1; }
-  h1, #ui, #hint { z-index: 2; }
+  h1, #ui { z-index: 2; }
   h1 {
     position: fixed; left: 18px; top: 10px; margin: 0;
     font-size: 48px; font-weight: 400; letter-spacing: 3px; color: #ffd93d;
@@ -51,12 +51,7 @@
   }
   button:active { transform: translate(2px, 2px); box-shadow: 1px 1px 0 #000; }
   button.on { background: #ffd93d; }
-  #hint {
-    position: fixed; right: 16px; top: 16px; font-size: 18px; letter-spacing: 1px;
-    background: #fff; color: #000; border: 3px solid #000; border-radius: 14px;
-    padding: 6px 12px; box-shadow: 3px 3px 0 #000; pointer-events: none;
-  }
-  @media (max-width: 600px) { h1 { font-size: 34px; } #hint { display: none; } button { font-size: 17px; padding: 5px 10px; } }
+  @media (max-width: 600px) { h1 { font-size: 34px; } button { font-size: 17px; padding: 5px 10px; } }
   [hidden] { display: none !important; }
   #hud[data-game=raid] .courier, #hud[data-game=courier] .raid { display: none; }
   #h-lives { color: #e8263b; }
@@ -123,7 +118,6 @@
 <body>
 <div id="halftone"></div>
 <h1>Little Worlds!</h1>
-<div id="hint">Drag to orbit · scroll to zoom in close</div>
 <div id="hud" hidden>
   <div class="box courier" id="h-timebox">TIME <b id="h-time">0</b></div>
   <div class="box courier">DELIVERED <b id="h-score">0</b></div>
@@ -288,6 +282,7 @@ camera.position.copy(CITIES[0].dir).multiplyScalar(3 * R).add(new V3(4, 6, 8));
 if (camera.aspect < 1) camera.position.multiplyScalar(0.8 / camera.aspect);   // fit the planet on a portrait phone
 scene.add(camera);
 const START_CAMERA_DISTANCE = camera.position.length();   // frozen for tests (AC3): camera.position itself gets driven around by later tests
+const START_CAMERA_POSITION = camera.position.clone();   // reused by the Orbit button to reset the view (Sandbox UI polish)
 
 scene.add(new THREE.AmbientLight('#bdb6ff', 1.0));
 const sun = new THREE.DirectionalLight('#fff4dc', 2.3);
@@ -1056,11 +1051,21 @@ const CHASE = {
 };
 let mode = 'orbit', target = null;
 const idx = { plane: -1, car: -1, boat: -1, sat: -1 };
-function setMode(m) {
+function setMode(m, resetView = true) {
   document.querySelectorAll('[data-mode]').forEach(b => b.classList.toggle('on', b.dataset.mode === m));
   mode = m;
   if (m === 'orbit' || !vehicles[m].length) {
     mode = 'orbit'; controls.enabled = true; camera.up.set(0, 1, 0);
+    // Clicking Orbit (or pressing Escape from the sandbox) always resets the view,
+    // even if we're already in orbit mode (Sandbox UI polish: otherwise a second
+    // click while zoomed in did nothing). quitGame() opts out via resetView=false -
+    // leaving a game should return to sandbox mode without snapping the camera the
+    // user wasn't touching back to the start framing.
+    if (resetView) {
+      camera.position.copy(START_CAMERA_POSITION);
+      controls.target.set(0, 0, 0);
+      setSpin(true);
+    }
     return;
   }
   idx[m] = (idx[m] + 1) % vehicles[m].length;   // pressing again hops to the next one
@@ -1148,7 +1153,7 @@ function openGame(kind) {
   resetPlane();
   parcel.visible = kind === 'courier';
   player.visible = true; mode = 'game'; target = player; controls.enabled = false;
-  $('ui').hidden = true; $('game-buttons').hidden = true; $('hint').hidden = true; document.querySelector('h1').hidden = true;
+  $('ui').hidden = true; $('game-buttons').hidden = true; document.querySelector('h1').hidden = true;
   hud.el.hidden = true; hud.el.dataset.game = kind;
   panel(rules.title, rules.intro, 'Start!');
   updateTouchVisibility();
@@ -1166,8 +1171,8 @@ function quitGame() {
   G.active = G.running = false; G.keys.clear();
   rules.stop();
   player.visible = false;
-  hud.el.hidden = true; $('panel').hidden = true; $('ui').hidden = false; $('game-buttons').hidden = false; $('hint').hidden = false; document.querySelector('h1').hidden = false;
-  setMode('orbit');
+  hud.el.hidden = true; $('panel').hidden = true; $('ui').hidden = false; $('game-buttons').hidden = false; document.querySelector('h1').hidden = false;
+  setMode('orbit', false);   // return to sandbox, but don't snap the camera the user wasn't touching
   updateTouchVisibility();
 }
 $('play').onclick = () => openGame('courier');

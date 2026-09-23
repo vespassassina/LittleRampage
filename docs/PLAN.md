@@ -94,6 +94,43 @@ Epics are grouped by game, not by order; the milestone tag on each sprint says w
 - [ ] Bonkers and Shellback with their traits; Random with variations (AC 1, 7, 10)
 - [ ] Balance pass and frame-cost check at heat 4 (AC 10)
 
+## Epic: Sandbox UI polish — backlog, not yet scheduled into a milestone
+
+Raised 2026-09-23. Two quick fixes go straight to TDD now; the other two need a short
+spec/plan pass before building (real features, not one-liners).
+
+- [ ] Options menu: quality selector (existing) plus a planet-size selector (small/mid/large).
+  Decision: sizes map to different R values (e.g. 10/15/20); switching resizes the current
+  planet live, same seed — not a reroll. Reuses the R-scaling work from Sprint P1 (NZ,
+  camera limits, orbit altitudes all already expressed in terms of R).
+- [x] Remove the "Drag to orbit · scroll to zoom in close" hint text.
+- [ ] Ride menu: one "Ride" button opens a menu (Plane / Car / Boat / Space), replacing the
+  separate Ride-a-plane/car/boat/Visit-space buttons. While riding, arrow keys move to the
+  next/previous instance of the same category (cars cycle to other cars, etc.), wrapping
+  around at the ends.
+- [x] Orbit button: currently does nothing after the first click. Fix so it resets the
+  camera to the start framing (whole planet visible, per P1's AC3 start-distance math)
+  and restarts the idle spin.
+- [ ] Idle spin should not stop on zoom (scroll wheel), only on an explicit drag-to-orbit.
+- [ ] In orbit view, up/down arrow keys zoom and left/right arrow keys rotate the view
+  (new controls) — same rule: using them should not stop the idle spin either.
+
+Raised 2026-09-23 (second batch), needs design before building:
+- [ ] Trains: a new vehicle running on tracks, presumably city to city like cars on ring
+  roads. Track network, spawn/route logic, instancing approach (reuse the car-instancing
+  pattern from P1 AC5?) all undecided.
+- [ ] Factories and power plants scattered around the terrain (not just in cities), as
+  destructible scenery: a dramatic explosion when destroyed ("blow like crazy when hit").
+  Overlaps with the Kaiju epic's destructible-scenery work (K1 AC3) and Sky Raid's bombs
+  hitting buildings (R2 AC5) — placement rules and the explosion effect need a spec pass.
+- [ ] Day and night cycle. Note: docs/specs/planet-v2.md explicitly listed "day and night"
+  as out of scope for P1/P2. The light is currently attached to the camera (per
+  docs/DECISIONS.md's first-version entry: "so the side you look at is always lit") —
+  a real day/night cycle is a lighting-model change, not a small tweak, and needs its own
+  design pass (does the light source move independently of the camera now? does it affect
+  gameplay, or is it purely cosmetic? does it interact with the moon's orbit already in
+  the scene?).
+
 ## Later
 - Frame-cost spot-check on a real low-end phone once the app is deployed (F1 review: AC 5 used a ×4 estimate on one machine)
 - Sound effects

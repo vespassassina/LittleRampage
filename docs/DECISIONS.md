@@ -2,6 +2,19 @@
 
 Newest first.
 
+## 2026-09-23 — Sandbox UI polish: Orbit button now always resets the view
+
+- **Orbit click resets camera + target + spin unconditionally, not just on a mode change.**
+  The old `setMode('orbit')` only flipped UI state and re-enabled controls; it never
+  touched `camera.position`, so a second click while already in orbit mode (the common
+  case — the button defaults to "on") did nothing. Fixed by having the orbit branch of
+  `setMode` always copy a frozen `START_CAMERA_POSITION` (captured once at boot, same
+  spot `START_CAMERA_DISTANCE` comes from) into `camera.position`, reset
+  `controls.target` to the origin, and call `setSpin(true)` to restart the idle
+  auto-rotate. Side effect: `openGame()`/`quitGame()` route through `setMode('orbit')`
+  too, so starting or quitting a game now also snaps the camera back to the start framing
+  — judged acceptable (arguably better) rather than adding a separate reset path.
+
 ## 2026-09-23 — P1 closed; review follow-ups triaged
 
 - **Reviewer: CLOSE with follow-ups.** All 8 ACs checked. Nothing blocked the merge.

@@ -121,6 +121,9 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { mergeVertices, mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 
+// ?test: used by tests.html so runs are repeatable (no auto-rotate drift).
+const TEST_MODE = new URLSearchParams(location.search).has('test');
+
 const V3 = THREE.Vector3;
 const UP = new V3(0, 1, 0);
 const R = 10;            // planet radius (sea level)
@@ -851,7 +854,7 @@ window.LW = { camera, scene, renderer };   // handy from the dev console
 controls.enableDamping = true; controls.dampingFactor = 0.06;
 controls.enablePan = false;
 controls.minDistance = R + 0.9; controls.maxDistance = 80;
-controls.autoRotate = true; controls.autoRotateSpeed = 0.35;
+controls.autoRotate = !TEST_MODE; controls.autoRotateSpeed = 0.35;
 
 const spinBtn = document.getElementById('spin');
 const setSpin = on => { controls.autoRotate = on; spinBtn.classList.toggle('on', on); };
@@ -939,8 +942,17 @@ function pointAt(dir, label) {
   hud.town.textContent = label;
   hud.dist.textContent = (G.p.angleTo(dir) * R).toFixed(1) + ' km';
 }
+const _pos = new V3();
+function syncPlaneTransform() {
+  // Mirrors G.p/G.f/G.alt onto the player Object3D. Called right after resetPlane()
+  // (not only from gameStep()) so LW.player.position is never stale between a game
+  // start and the first frame() call — tests and touch-input code both read it eagerly.
+  frameAt(_pos.copy(G.p).multiplyScalar(G.alt), G.p, G.f).decompose(player.position, player.quaternion, player.scale);
+  playerBody.rotation.z = G.bank;
+}
 function resetPlane() {
   G.p.copy(CITIES[0].dir); G.f.copy(CITIES[0].t2); G.alt = skyFloor(G.p) + 0.4; G.bank = 0;
+  syncPlaneTransform();
 }
 function openGame(kind) {
   if (mode !== 'orbit') setMode('orbit');
@@ -984,7 +996,6 @@ addEventListener('keydown', e => {
 addEventListener('keyup', e => { if (KEYMAP[e.key]) G.keys.delete(KEYMAP[e.key]); });
 addEventListener('blur', () => G.keys.clear());
 
-const _pos = new V3();
 function gameStep(dt, t) {
   const k = G.keys;
   const turn = (k.has('right') ? 1 : 0) - (k.has('left') ? 1 : 0);
@@ -995,8 +1006,7 @@ function gameStep(dt, t) {
     G.alt = clamp(G.alt + climb * CLIMB * dt, skyFloor(G.p), CEIL);
   }
   G.bank += (turn * 0.55 - G.bank) * Math.min(1, dt * 5);
-  frameAt(_pos.copy(G.p).multiplyScalar(G.alt), G.p, G.f).decompose(player.position, player.quaternion, player.scale);
-  playerBody.rotation.z = G.bank;
+  syncPlaneTransform();
   playerBody.userData.prop.rotation.z += dt * 40;
   rules.step(dt, t);
 }
@@ -1283,8 +1293,13 @@ function frame(fixedDt) {
 
   renderer.render(scene, camera);
 }
-renderer.setAnimationLoop(() => frame());
+// In test mode, nothing drives frame() but the test runner's own LW.frame(dt) calls.
+// A live rAF loop running underneath would sneak extra, unaccounted frames in between
+// a test's manual steps — this pane throttles rAF irregularly, so that showed up as
+// a flaky test rather than a clean failure or a clean pass.
+if (!TEST_MODE) renderer.setAnimationLoop(() => frame());
 LW.frame = frame;
+LW.ready = true;   // last thing set: tests.html polls this before running checks
 </script>
 </body>
 </html>

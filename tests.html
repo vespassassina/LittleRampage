@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Little Worlds — tests</title>
+<style>
+  body { font: 15px/1.5 system-ui, sans-serif; margin: 24px; background: #14101f; color: #eee; }
+  h1 { margin: 0 0 4px; }
+  #summary { font-size: 18px; margin: 12px 0; }
+  #summary.pass { color: #6bd66b; }
+  #summary.fail { color: #ff6b6b; }
+  ul { list-style: none; padding: 0; margin: 0; }
+  li { padding: 6px 10px; border-radius: 6px; margin: 2px 0; }
+  li.pass { background: #16321a; color: #9fe89f; }
+  li.fail { background: #3a1414; color: #ffb3b3; }
+  li .err { display: block; font-size: 13px; color: #ffcccc; margin-top: 2px; white-space: pre-wrap; }
+  iframe { width: 800px; height: 600px; border: 2px solid #444; margin-top: 16px; }
+  #status { color: #aaa; }
+</style>
+</head>
+<body>
+<h1>Little Worlds — tests</h1>
+<div id="status">Loading the app…</div>
+<div id="summary"></div>
+<ul id="results"></ul>
+<iframe id="app" src="index.html?test"></iframe>
+
+<script>
+// Test manifest: add a new file here when a sprint adds one.
+const TEST_FILES = ['tests/courier.js', 'tests/raid.js'];
+
+const statusEl = document.getElementById('status');
+const summaryEl = document.getElementById('summary');
+const resultsEl = document.getElementById('results');
+const frame = document.getElementById('app');
+
+function waitFor(cond, timeoutMs = 15000) {
+  // setTimeout, not requestAnimationFrame: some hosts throttle rAF on a background
+  // or off-screen tab, which would make this hang instead of just running slower.
+  return new Promise((resolve, reject) => {
+    const start = performance.now();
+    (function poll() {
+      if (cond()) return resolve();
+      if (performance.now() - start > timeoutMs) return reject(new Error('timed out waiting for the app'));
+      setTimeout(poll, 30);
+    })();
+  });
+}
+
+async function run() {
+  // Poll instead of frame.onload: onload can fire before this script attaches the handler
+  // on a fast local server, which would hang the wait forever.
+  await waitFor(() => frame.contentDocument && frame.contentDocument.readyState === 'complete');
+  const win = frame.contentWindow;
+  await waitFor(() => win.LW && win.LW.ready);
+  statusEl.textContent = 'App ready. Loading test files…';
+
+  // LW_TESTS lives in the iframe, so bare `document`/`dispatchEvent` in test files
+  // resolve to the app's own window, not this page.
+  win.LW_TESTS = [];
+  for (const file of TEST_FILES) {
+    const code = await fetch(file).then(r => {
+      if (!r.ok) throw new Error(`could not load ${file}: ${r.status}`);
+      return r.text();
+    });
+    const script = win.document.createElement('script');
+    script.textContent = code;
+    win.document.body.appendChild(script);
+  }
+
+  const tests = win.LW_TESTS;
+  statusEl.textContent = `Running ${tests.length} test${tests.length === 1 ? '' : 's'}…`;
+
+  let passed = 0;
+  const rows = [];
+  for (const t of tests) {
+    let ok = true, message = '';
+    try {
+      // Each test opens, runs and quits its own game, so a clean iframe reload
+      // between tests is not needed — but guard against a test leaving the game
+      // running, which would break the next one's start state.
+      if (win.LW.game.active) win.LW.games.quit();
+      const result = t.run(win.LW);
+      if (result === false) { ok = false; message = 'returned false'; }
+    } catch (e) {
+      ok = false; message = e && e.message ? e.message : String(e);
+    }
+    if (ok) passed++;
+    rows.push({ name: t.name, game: t.game, ok, message });
+  }
+
+  resultsEl.innerHTML = rows.map(r => `
+    <li class="${r.ok ? 'pass' : 'fail'}">
+      ${r.ok ? '✓' : '✗'} [${r.game}] ${r.name}
+      ${r.ok ? '' : `<span class="err">${r.message.replace(/</g, '&lt;')}</span>`}
+    </li>`).join('');
+
+  const allPass = passed === tests.length;
+  summaryEl.className = allPass ? 'pass' : 'fail';
+  summaryEl.textContent = `${passed} / ${tests.length} passed`;
+  statusEl.textContent = 'Done.';
+  window.TEST_RESULTS = { passed, total: tests.length, rows };   // for scripted checks (e.g. a headless run)
+}
+
+run().catch(e => { statusEl.textContent = 'Runner error: ' + e.message; summaryEl.textContent = ''; });
+</script>
+</body>
+</html>

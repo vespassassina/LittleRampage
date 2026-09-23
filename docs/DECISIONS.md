@@ -2,6 +2,11 @@
 
 Newest first.
 
+## 2026-09-23 — Satellites and a space station
+
+- Six satellites orbit at 5–7 units up and a space station at 8, all on tilted circular orbits. Satellite dishes point at the planet, and blinking lights share one material.
+- A new "Visit space" button starts at the station, then cycles through the satellites. Each object can carry its own `userData.chase` camera, because a station and a small satellite need different framing.
+
 ## 2026-09-23 — First version: one HTML file, no build
 
 - **Single `index.html`, Three.js 0.170 from jsDelivr via an import map.** No bundler, no npm, no test harness, as asked. It opens from disk or any static server.

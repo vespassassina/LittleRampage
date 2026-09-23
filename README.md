@@ -2,7 +2,7 @@
 
 A tiny cartoon planet in Three.js, drawn like a comic: toon shading and black ink outlines.
 It has cities with streets and traffic, forests, mountains with snow, a sea with boats,
-planes with smoke trails, hot-air balloons, windmills, clouds and a moon.
+planes with smoke trails, hot-air balloons, windmills, clouds, satellites, a space station and a moon.
 
 ## Run
 
@@ -17,7 +17,7 @@ Then open http://localhost:8765. Double-clicking `index.html` also works in most
 ## Controls
 
 - Drag to orbit. Scroll or pinch to zoom, all the way down to street level.
-- **Ride a plane / car / boat** follows a vehicle. Press it again for the next one.
+- **Ride a plane / car / boat** and **Visit space** follow a vehicle. Press it again for the next one.
 - **Orbit** or Esc goes back to free orbit. **Spin** toggles the slow auto-rotation.
 
 ## How it works

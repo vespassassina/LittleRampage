@@ -58,6 +58,7 @@
   <button data-mode="plane">Ride a plane</button>
   <button data-mode="car">Ride a car</button>
   <button data-mode="boat">Ride a boat</button>
+  <button data-mode="sat">Visit space</button>
   <button id="spin" class="on">Spin</button>
 </div>
 
@@ -429,7 +430,7 @@ function makeCar(color) {
   return g;
 }
 
-const vehicles = { car: [], plane: [], boat: [] };
+const vehicles = { car: [], plane: [], boat: [], sat: [] };
 const movers = [];   // functions (t, dt) => void
 
 // ---------- cities ----------
@@ -676,6 +677,80 @@ for (let k = 0; k < 4; k++) {
   movers.push((t, dt) => { pivot.rotateX(w * dt); b.position.y = alt + Math.sin(t * 0.8 + ph) * 0.12; });
 }
 
+// ---------- satellites and a space station ----------
+function panelTexture() {
+  const c = document.createElement('canvas'); c.width = 64; c.height = 32;
+  const g = c.getContext('2d');
+  g.fillStyle = '#2346b8'; g.fillRect(0, 0, 64, 32);
+  g.fillStyle = '#9cc4ff';
+  for (let x = 0; x <= 64; x += 8) g.fillRect(x, 0, 1.5, 32);
+  for (let y = 0; y <= 32; y += 8) g.fillRect(0, y, 64, 1.5);
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 8;
+  return t;
+}
+const PANEL = panelTexture();
+const blinkMat = new THREE.MeshBasicMaterial({ color: '#ff3b3b' });
+function blinker(x, y, z) {
+  const b = new THREE.Mesh(new THREE.SphereGeometry(0.025, 8, 6), blinkMat);
+  b.position.set(x, y, z); return b;
+}
+// Launches something onto a tilted circular orbit; the planet is at local -Y.
+function orbit(obj, alt, w) {
+  const pivot = new THREE.Object3D();
+  pivot.quaternion.setFromUnitVectors(UP, randomDir());
+  pivot.rotateY(rr(0, 6.28));
+  obj.position.y = alt;
+  pivot.add(obj); scene.add(pivot);
+  movers.push((t, dt) => pivot.rotateX(w * dt));
+}
+
+function makeSatellite(color) {
+  const g = new THREE.Group();
+  g.add(inked(new THREE.BoxGeometry(0.2, 0.2, 0.28), toon(color), 0.015));
+  for (const s of [-1, 1]) {
+    g.add(inked(new THREE.CylinderGeometry(0.012, 0.012, 0.14, 6).rotateZ(Math.PI / 2).translate(s * 0.17, 0, 0), toon('#cccccc'), 0.008));
+    g.add(inked(new THREE.BoxGeometry(0.46, 0.012, 0.2).translate(s * 0.47, 0, 0), toon('#ffffff', PANEL), 0.012));
+  }
+  // dish pointing at the planet
+  g.add(inked(new THREE.SphereGeometry(0.11, 16, 8, 0, Math.PI * 2, 0, Math.PI / 3).rotateX(Math.PI).translate(0, -0.03, 0.02), toon('#ffffff'), 0.01));
+  g.add(inked(new THREE.CylinderGeometry(0.008, 0.008, 0.1, 6).translate(0, -0.2, 0.02), toon('#cccccc'), 0.006));
+  g.add(blinker(0, 0.11, -0.1));
+  return g;
+}
+const SAT_COLORS = ['#ffcc33', '#e8e8f0', '#ff9f43', '#ffcc33', '#a66cff', '#e8e8f0'];
+SAT_COLORS.forEach(color => {
+  const sat = makeSatellite(color);
+  orbit(sat, rr(R + 5.2, R + 6.8), rr(0.05, 0.08));
+  sat.userData.chase = { off: new V3(0, 0.7, -1.7), look: new V3(0, -0.7, 0.4) };
+  vehicles.sat.push(sat);
+});
+
+function makeStation() {
+  const g = new THREE.Group();
+  const add = (geo, mat, w = 0.02) => { const m = inked(geo, mat, w); g.add(m); return m; };
+  const white = toon('#f2f2f7'), grey = toon('#b9bccb');
+  // pressurised modules along the direction of travel
+  add(new THREE.CylinderGeometry(0.11, 0.11, 0.5, 16).rotateX(Math.PI / 2), white);
+  add(new THREE.CylinderGeometry(0.09, 0.09, 0.38, 16).rotateX(Math.PI / 2).translate(0, 0, 0.44), toon('#ffd93d'));
+  add(new THREE.CylinderGeometry(0.09, 0.09, 0.34, 16).rotateX(Math.PI / 2).translate(0, 0, -0.42), toon('#ff9f43'));
+  add(new THREE.SphereGeometry(0.13, 16, 12), white);
+  add(new THREE.CylinderGeometry(0.075, 0.075, 0.3, 14).translate(0, 0.2, 0), toon('#6bcbef'));
+  add(new THREE.CylinderGeometry(0.075, 0.075, 0.26, 14).translate(0, -0.19, 0), toon('#ff6b6b'));
+  // truss across, with four big solar wings and white radiators
+  add(new THREE.BoxGeometry(2.0, 0.05, 0.05), grey, 0.015);
+  for (const x of [-0.85, -0.55, 0.55, 0.85]) for (const s of [-1, 1]) {
+    add(new THREE.BoxGeometry(0.24, 0.012, 0.6).translate(x, 0, s * 0.33), toon('#ffffff', PANEL), 0.012);
+  }
+  for (const x of [-0.3, 0.3]) add(new THREE.BoxGeometry(0.16, 0.26, 0.012).translate(x, -0.16, 0), white, 0.01);
+  g.add(blinker(1.0, 0.04, 0), blinker(-1.0, 0.04, 0), blinker(0, 0.36, 0));
+  return g;
+}
+const station = makeStation();
+orbit(station, R + 8, 0.035);
+station.userData.chase = { off: new V3(0, 1.1, -2.6), look: new V3(0, -0.5, 0.4) };
+vehicles.sat.unshift(station);   // the first ride is the station
+movers.push((t) => { blinkMat.color.set(Math.sin(t * 4) > 0.3 ? '#ff3b3b' : '#5a1020'); });
+
 // ---------- clouds ----------
 const clouds = new THREE.Group();
 {
@@ -714,7 +789,7 @@ const controls = new OrbitControls(camera, renderer.domElement);
 window.LW = { camera, scene, renderer };   // handy from the dev console
 controls.enableDamping = true; controls.dampingFactor = 0.06;
 controls.enablePan = false;
-controls.minDistance = R + 0.9; controls.maxDistance = 70;
+controls.minDistance = R + 0.9; controls.maxDistance = 80;
 controls.autoRotate = true; controls.autoRotateSpeed = 0.35;
 
 const spinBtn = document.getElementById('spin');
@@ -728,7 +803,7 @@ const CHASE = {
   boat:  { off: new V3(0, 0.3, -0.8), look: new V3(0, 0.02, 0.6) },
 };
 let mode = 'orbit', target = null;
-const idx = { plane: -1, car: -1, boat: -1 };
+const idx = { plane: -1, car: -1, boat: -1, sat: -1 };
 function setMode(m) {
   document.querySelectorAll('[data-mode]').forEach(b => b.classList.toggle('on', b.dataset.mode === m));
   mode = m;
@@ -770,7 +845,7 @@ function frame(fixedDt) {
     camera.rotateX((1 - smooth(1.2, 7, alt)) * 1.05);
   } else {
     target.updateWorldMatrix(true, false);
-    const c = CHASE[mode];
+    const c = target.userData.chase ?? CHASE[mode];
     // glide over the surface, never through the planet: blend direction and height separately
     const want = target.localToWorld(tmp.copy(c.off)), k = 1 - Math.exp(-dt * 4);
     const len = THREE.MathUtils.lerp(camera.position.length(), want.length(), k);

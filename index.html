@@ -537,82 +537,63 @@ const movers = [];   // functions (t, dt) => void
 // ---------- instanced cars ----------
 // Use a reasonable upper bound for car instances (3 cities × ~50 cars per city = ~150)
 const MAX_CARS = 200;
+// One InstancedMesh per car part (body, cab, wheels) plus one per ink outline: 6 draw
+// calls total, however many cars or car colors are on the road. Bodies used to get a
+// separate InstancedMesh per colour (PALETTE has 10 colours, plus 2 extras used by
+// traffic = up to 12), which alone blew past AC5's "at most 10 draw calls" budget.
+// Instead, all bodies share one mesh and one material; per-car colour comes from
+// InstancedMesh's built-in instanceColor, which the shader multiplies into the (white)
+// base colour. Ink outlines don't need per-colour variants at all - the outline is
+// always the same dark colour regardless of the body colour underneath.
 const carInstances = {
-  bodies: new Map(),  // color -> { mesh, count, instances: [] }
+  bodies: { mesh: null, count: 0 },
   cabs: { mesh: null, count: 0 },
   wheels: { mesh: null, count: 0 },
-  inkBodies: new Map(),
+  inkBodies: { mesh: null, count: 0 },
   inkCabs: { mesh: null, count: 0 },
   inkWheels: { mesh: null, count: 0 },
 };
 
 function initCarInstancing() {
-  // Create instanced meshes for car parts.
+  // Body mesh: white base material so instanceColor (set per car in addCarInstance)
+  // shows through as the true car colour.
+  carInstances.bodies.mesh = new THREE.InstancedMesh(CAR_BODY, toon('#ffffff'), MAX_CARS);
+  carInstances.bodies.mesh.castShadow = true;
+  scene.add(carInstances.bodies.mesh);
 
   // Shared cab mesh (all cabins are light blue)
-  const cabMat = toon('#cdefff');
-  const cabGeo = CAR_CAB;
-  carInstances.cabs.mesh = new THREE.InstancedMesh(cabGeo, cabMat, MAX_CARS);
+  carInstances.cabs.mesh = new THREE.InstancedMesh(CAR_CAB, toon('#cdefff'), MAX_CARS);
   carInstances.cabs.mesh.castShadow = true;
   scene.add(carInstances.cabs.mesh);
 
   // Shared wheels mesh (all wheels are dark)
-  const wheelMat = toon('#26233a');
-  const wheelGeo = WHEELS;
-  carInstances.wheels.mesh = new THREE.InstancedMesh(wheelGeo, wheelMat, MAX_CARS);
+  carInstances.wheels.mesh = new THREE.InstancedMesh(WHEELS, toon('#26233a'), MAX_CARS);
   carInstances.wheels.mesh.castShadow = true;
   scene.add(carInstances.wheels.mesh);
 
-  // Ink outlines for cabs and wheels (shared across all cars)
-  const cabInkMat = ink(0.01);
-  const cabInkGeo = hullGeo(CAR_CAB);
-  carInstances.inkCabs.mesh = new THREE.InstancedMesh(cabInkGeo, cabInkMat, MAX_CARS);
+  // Ink outlines, one shared mesh per part (outline colour is constant).
+  carInstances.inkBodies.mesh = new THREE.InstancedMesh(hullGeo(CAR_BODY), ink(0.01), MAX_CARS);
+  scene.add(carInstances.inkBodies.mesh);
+
+  carInstances.inkCabs.mesh = new THREE.InstancedMesh(hullGeo(CAR_CAB), ink(0.01), MAX_CARS);
   scene.add(carInstances.inkCabs.mesh);
 
-  const wheelInkMat = ink(0.006);
-  const wheelInkGeo = hullGeo(WHEELS);
-  carInstances.inkWheels.mesh = new THREE.InstancedMesh(wheelInkGeo, wheelInkMat, MAX_CARS);
+  carInstances.inkWheels.mesh = new THREE.InstancedMesh(hullGeo(WHEELS), ink(0.006), MAX_CARS);
   scene.add(carInstances.inkWheels.mesh);
 }
 
-function getOrCreateBodyInstance(color) {
-  if (!carInstances.bodies.has(color)) {
-    const mat = toon(color);
-    const geo = CAR_BODY;
-    const mesh = new THREE.InstancedMesh(geo, mat, MAX_CARS);
-    mesh.castShadow = true;
-    scene.add(mesh);
-    carInstances.bodies.set(color, { mesh, count: 0, instances: [] });
-
-    // Create ink outline for this color
-    const inkMat = ink(0.01);
-    const inkGeo = hullGeo(CAR_BODY);
-    const inkMesh = new THREE.InstancedMesh(inkGeo, inkMat, MAX_CARS);
-    scene.add(inkMesh);
-    carInstances.inkBodies.set(color, { mesh: inkMesh, count: 0 });
-  }
-  return carInstances.bodies.get(color);
-}
-
 function addCarInstance(color) {
-  const bodyData = getOrCreateBodyInstance(color);
-
-  // Allocate instance indices
-  const bodyIndex = bodyData.count;
+  // Allocate instance indices (all parts grow in lockstep, one car at a time).
+  const bodyIndex = carInstances.bodies.count;
   const cabIndex = carInstances.cabs.count;
   const wheelIndex = carInstances.wheels.count;
 
-  // Track this car
-  const carDescriptor = {
-    color,
-    bodyIndex,
-    cabIndex,
-    wheelIndex,
-  };
+  const carDescriptor = { color, bodyIndex, cabIndex, wheelIndex };
 
-  bodyData.instances.push(carDescriptor);
-  bodyData.count++;
-  bodyData.mesh.count = bodyData.count;
+  carInstances.bodies.count++;
+  carInstances.bodies.mesh.count = carInstances.bodies.count;
+  carInstances.bodies.mesh.setColorAt(bodyIndex, new THREE.Color(color));
+  carInstances.bodies.mesh.instanceColor.needsUpdate = true;
 
   carInstances.cabs.count++;
   carInstances.cabs.mesh.count = carInstances.cabs.count;
@@ -620,10 +601,8 @@ function addCarInstance(color) {
   carInstances.wheels.count++;
   carInstances.wheels.mesh.count = carInstances.wheels.count;
 
-  // Update ink outline counters and mesh counts
-  const bodyInkData = carInstances.inkBodies.get(color);
-  bodyInkData.count++;
-  bodyInkData.mesh.count = bodyInkData.count;
+  carInstances.inkBodies.count++;
+  carInstances.inkBodies.mesh.count = carInstances.inkBodies.count;
 
   carInstances.inkCabs.count++;
   carInstances.inkCabs.mesh.count = carInstances.inkCabs.count;
@@ -632,6 +611,13 @@ function addCarInstance(color) {
   carInstances.inkWheels.mesh.count = carInstances.inkWheels.count;
 
   return carDescriptor;
+}
+
+// Show/hide all car parts at once, for measuring traffic's own draw-call cost (AC5).
+function setCarsVisible(visible) {
+  for (const part of Object.values(carInstances)) {
+    if (part.mesh) part.mesh.visible = visible;
+  }
 }
 
 // ---------- cities ----------
@@ -724,11 +710,10 @@ function buildCity(c) {
         const mat = frameAt(pos, up, c.map(x2, z2).multiplyScalar(top).sub(pos));
 
         // Update instance matrices for all car parts
-        const bodyData = carInstances.bodies.get(carDesc.color);
-        bodyData.mesh.setMatrixAt(carDesc.bodyIndex, mat);
-        bodyData.mesh.instanceMatrix.needsUpdate = true;
-        carInstances.inkBodies.get(carDesc.color).mesh.setMatrixAt(carDesc.bodyIndex, mat);
-        carInstances.inkBodies.get(carDesc.color).mesh.instanceMatrix.needsUpdate = true;
+        carInstances.bodies.mesh.setMatrixAt(carDesc.bodyIndex, mat);
+        carInstances.bodies.mesh.instanceMatrix.needsUpdate = true;
+        carInstances.inkBodies.mesh.setMatrixAt(carDesc.bodyIndex, mat);
+        carInstances.inkBodies.mesh.instanceMatrix.needsUpdate = true;
 
         carInstances.cabs.mesh.setMatrixAt(carDesc.cabIndex, mat);
         carInstances.cabs.mesh.instanceMatrix.needsUpdate = true;
@@ -1573,6 +1558,7 @@ if (!TEST_MODE) renderer.setAnimationLoop(() => frame());
 LW.frame = frame;
 LW.makeCar = makeCar;   // expose for tests
 LW.addCarInstance = addCarInstance;   // expose for tests
+LW.setCarsVisible = setCarsVisible;   // expose for tests: measure traffic's own draw-call cost
 LW.ready = true;   // last thing set: tests.html polls this before running checks
 </script>
 </body>

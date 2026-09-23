@@ -58,22 +58,34 @@ LW_TESTS.push({
 LW_TESTS.push({
   name: 'planet: car traffic respects 10-call limit (AC 5)',
   run(LW) {
-    // Measure total draw calls for the scene with cars
+    // AC5 bounds what TRAFFIC costs, not the whole scene - terrain/sea/sky/city batches
+    // draw hundreds of calls on their own (see docs/DECISIONS.md's F1/P1 baselines: ~785
+    // calls at High quality with zero cars involved). So measure cars' own contribution:
+    // hide all car parts, record draw calls, show them again, record draw calls, and
+    // assert the delta - not the scene total - stays within AC5's budget.
+    const carCount = LW.vehicles.car.length;
+    if (carCount === 0) {
+      throw new Error('No cars spawned in the world');
+    }
+
+    LW.setCarsVisible(false);
+    LW.frame(1 / 60);
+    const callsWithoutCars = LW.renderer.info.render.calls;
+
+    LW.setCarsVisible(true);
     LW.frame(1 / 60);
     const callsWithCars = LW.renderer.info.render.calls;
 
-    // The AC says "traffic costs at most 10 draw calls"
-    // Terrain + sea + sky are maybe 10-15 calls, so with cars we expect < 30 total for orbit view
-    // With 3 cities and ~10+ cars per city = 30+ cars, if not instanced we'd have 200+ calls
-    // With instancing, we expect ~20-25 calls total
+    const carDrawCalls = callsWithCars - callsWithoutCars;
 
-    const carCount = LW.vehicles.car.length;
-
-    // Very loose bound: if we have 50+ cars and draw calls are > 100, something is wrong
-    if (carCount > 30 && callsWithCars > 100) {
+    // Traffic is 3 InstancedMeshes (body, cab, wheels) plus 3 matching ink-outline
+    // meshes - 6 draw calls total, regardless of car count or how many colours are on
+    // the road. AC5 says "at most 10 draw calls", so allow a little headroom above 6.
+    if (carDrawCalls > 10) {
       throw new Error(
-        `Draw calls too high for ${carCount} cars: ${callsWithCars} calls. ` +
-        `Expected < 100 with instancing. Cars may not be properly instanced.`
+        `Traffic added ${carDrawCalls} draw calls for ${carCount} cars ` +
+        `(without: ${callsWithoutCars}, with: ${callsWithCars}). ` +
+        `AC5 requires at most 10 draw calls for traffic, however many cars there are.`
       );
     }
 

@@ -2,6 +2,18 @@
 
 Newest first.
 
+## 2026-09-23 — F1 closed; next is P1
+
+- **F1 closed.** Reviewer: CLOSE, all 6 ACs verified, 38/38 checks and a live browser run.
+- **Next sprint is P1 (bigger planet), not R2.** ROADMAP.md is the source of truth: F, then planet, then the Raid fight, then Kaiju.
+  PLAN.md listed R2 before Planet v2 because epics are grouped by game. Its header now says milestone 2, after P1 and P2,
+  and a build-order line sits at the top of PLAN.md.
+- **Quality-switch checks become behavioural in P1.** The F1 auto-switch checks are structural proxies. P1 changes traffic,
+  which Low trims, so that is the cheap moment to tighten them. Added as a P1 task.
+- **Real-phone frame-cost spot-check goes to Later.** AC5's numbers come from one machine with a ×4 estimate for throttle.
+  Only a deployed build can be checked on a real phone, and deploy is not planned yet.
+- **Recommend merging feat/foundations-f1 into main before P1**, then branching P1 off main. Needs Diego's go.
+
 ## 2026-09-23 — F1 AC5 frame-cost check: measured, not throttled live
 
 - **No CPU-throttle control in this session's browser tooling**, and this pane's own

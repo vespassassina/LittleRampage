@@ -1,11 +1,13 @@
 # Handoff
 
-Paused 2026-09-23 after planning. Read this first, then delete it when F1 starts.
+Paused 2026-09-23 after sprint F1. Read this first; delete it when P1 starts.
 Model routing for the work: see the project CLAUDE.md.
 
 ## Done
 
-- The app: `index.html`, one file, Three.js 0.170 from jsDelivr. A comic planet with traffic, planes, boats,
+- Sprint F1 (Foundations) closed and reviewed: tests.html, bundled Three.js and font, touch layer,
+  quality switch, frame-cost check, metadata. On branch `feat/foundations-f1`, not yet merged or pushed.
+- The app: `index.html`, one file, Three.js 0.170 bundled in `vendor/`. A comic planet with traffic, planes, boats,
   balloons, satellites, a station and a moon. Games: Sky Courier (complete) and Sky Raid (training round only).
 - Roadmap, specs and plan are approved: [ROADMAP.md](ROADMAP.md), [PLAN.md](PLAN.md), [specs/](specs/).
   Decisions and why: [DECISIONS.md](DECISIONS.md).
@@ -13,11 +15,11 @@ Model routing for the work: see the project CLAUDE.md.
 
 ## Next
 
-Sprint F1 in [PLAN.md](PLAN.md), spec [specs/foundations.md](specs/foundations.md). Task 1 comes first:
-tests.html, so every later task starts with a failing check there.
+1. Diego decides on merging `feat/foundations-f1` into `main` (recommended, see DECISIONS.md).
+2. Sprint P1 in [PLAN.md](PLAN.md), spec [specs/planet-v2.md](specs/planet-v2.md), on a branch off `main`.
+   Task 1 first: record the frame-cost baseline before anything changes.
 
-Then P1, P2 (bigger planet), R2 (Sky Raid fight), K1 to K4 (Kaiju). One sprint at a time;
-tick tasks; review and re-plan at each sprint end; get Diego's go before the next sprint.
+Then P2, R2 (Sky Raid fight), K1 to K4 (Kaiju). One sprint at a time; get Diego's go before each.
 
 ## How to run and test
 
@@ -30,8 +32,7 @@ python3 -m http.server 8765
   courier, raid {balloons, shots, enemies, bursts, fire, shotWorld}, player, V3`.
 - The Claude browser pane throttles requestAnimationFrame. Drive time by hand:
   `for (let i = 0; i < 60; i++) LW.frame(1/60)` is one second.
-- [tests/sprint1-checks.js](../tests/sprint1-checks.js) holds the checks run so far (Courier regression,
-  Raid AC 1–3, quit). Paste it in the console. All pass except the old draw-call check, which the spec dropped.
+- Checks: open http://localhost:8765/tests.html. It runs `tests/*.js` (courier, raid, touch, quality). 38/38 at F1 close.
 
 ## Code map (index.html)
 

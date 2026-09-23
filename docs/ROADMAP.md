@@ -9,7 +9,7 @@ every game ships with touch controls, and the target is 60 fps on desktop, 30 on
 |---|---|---|---|---|
 | ✅ 0 | Planet, vehicles, space, Sky Courier | Done | [sky-courier](specs/sky-courier.md) | — |
 | ✅ 0 | Sky Raid training round | Done | [sky-raid](specs/sky-raid.md) | — |
-| F | **Foundations** | A public app needs a test suite, local Three.js, touch for the existing games and a quality switch before it grows. | [foundations](specs/foundations.md) | F1 |
+| ✅ F | **Foundations** | A public app needs a test suite, local Three.js, touch for the existing games and a quality switch before it grows. | [foundations](specs/foundations.md) | F1 |
 | 1 | **Bigger planet** | Every mode depends on its size. Doing it later means retuning every game. | [planet-v2](specs/planet-v2.md) | P1, P2 |
 | 2 | **Sky Raid: the fight** | Half built; finish it before starting another game. | [sky-raid](specs/sky-raid.md) | R2 |
 | 3 | **Kaiju mode** | Needs the bigger planet and destructible cities. | [kaiju](specs/kaiju.md) | K1–K4 |

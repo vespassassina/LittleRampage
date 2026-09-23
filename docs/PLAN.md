@@ -1,5 +1,8 @@
 # Plan
 
+Build order, per [ROADMAP.md](ROADMAP.md): F1 → P1, P2 → R2 → K1–K4.
+Epics are grouped by game, not by order; the milestone tag on each sprint says when it runs.
+
 ## Epic: Sky Courier ([spec](specs/sky-courier.md))
 
 ### Sprint 1: playable loop (keyboard), done 2026-09-23
@@ -26,7 +29,7 @@
 
 ## Epic: Foundations ([spec](specs/foundations.md)) — milestone F
 
-### Sprint F1: ready to publish
+### Sprint F1: ready to publish, done 2026-09-23
 - [x] tests.html runner; Courier and Raid checks moved into tests/ (AC 1)
 - [x] Three.js and the Bangers font bundled; no external requests (AC 2)
 - [x] Touch layer: joystick and action buttons; Courier and Raid on touch (AC 3)
@@ -34,7 +37,7 @@
 - [x] Frame-cost check, desktop and throttled phone (AC 5)
 - [x] Metadata, share image, favicon (AC 6)
 
-### Sprint R2: the fight (after milestone 1)
+### Sprint R2: the fight — milestone 2, after P1 and P2
 - [ ] Enemy planes chase, shoot; lives, blink, end screen, best score (AC 7)
 - [ ] Waves with rising speed, count and fire rate (AC 6)
 - [ ] Guns hit civilian planes; bombs hit cars and boats and buildings; respawn and restore on quit (AC 4, 5, 8)
@@ -50,6 +53,7 @@
 - [ ] 5 cities, spaced, off the sea (AC 2)
 - [ ] Camera limits, start view, orbits, moon, atmosphere scaled (AC 3, 4)
 - [ ] Courier and Raid checks pass (AC 8)
+- [ ] Quality auto-switch checks made behavioural: feed slow frame times, expect Low; fast, expect High (F1 review)
 
 ### Sprint P2: fill it and make it breakable
 - [ ] More hamlets, trees, boats, planes, balloons, satellites, clouds by area (spec rules)
@@ -83,6 +87,7 @@
 - [ ] Balance pass and frame-cost check at heat 4 (AC 10)
 
 ## Later
+- Frame-cost spot-check on a real low-end phone once the app is deployed (F1 review: AC 5 used a ×4 estimate on one machine)
 - Sound effects
 - World randomizer: a Generate button rerolls the planet from a seed; the seed is shown
   and editable, so the same seed reproduces the same world. The seed drives all layers

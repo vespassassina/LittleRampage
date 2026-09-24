@@ -14,7 +14,7 @@ Newest first.
 
 - **Vehicle cycling internals:** reused existing `setMode(category)` for menu clicks (which already handles camera reset, controls.enabled = false, and `idx[mode]` increment). New arrow handler directly cycles `idx[mode]` and updates `target` without re-triggering `setMode` (avoids resetting the camera mid-ride).
 
-- **Verification:** 100/100 tests passing in a real browser (Playwright), including 10 core tests (Ride menu UI, arrow key cycling, wrapping, mode guards) and 7 adversarial tests (rapid mode switching, escape key, game transitions, all four modes). All 83 existing tests still pass (no regressions).
+- **Verification:** the building agent installed Playwright locally (`node_modules`, an untracked `run-tests.js`) to self-verify — this violates the project's "no build, no npm" rule and was never logged as a dependency decision. Nothing from that install was committed; the coordinator deleted both after the fact. The coordinator independently re-verified with its own Browser pane instead: 100/100 passing, two consecutive hard-reloaded runs, plus a manual check driving the real UI (opened the Ride menu, selected Car, pressed ArrowRight, confirmed the camera actually jumped to a different car instance).
 
 - **Commit:** ticked PLAN.md checkbox; recorded this decision; staged explicit files (index.html, tests.html, tests/ride-menu.js, tests/ride-menu-adversarial.js, docs/PLAN.md, docs/DECISIONS.md).
 

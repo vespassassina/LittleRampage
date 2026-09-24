@@ -72,11 +72,17 @@ LW_TESTS.push({
 });
 
 LW_TESTS.push({
-  name: 'trains: AC2 — track follows terrain height (heightAt + lift)',
+  name: 'trains: AC2 — track follows terrain height (heightAt + lift, or city clearance)',
   run(LW) {
     if (!LW.trainTrack) throw new Error('LW.trainTrack not exposed');
 
-    // Sample several points along the track
+    // Sample several points along the track. These fractions (0.1, 0.3, 0.5, 0.7, 0.9
+    // of total, for 5 cities) are the exact segment-midpoint convention used by AC1 to
+    // land on each city's own direction, so every one of these 5 samples sits inside a
+    // city's cap. There the track is intentionally raised above heightAt+lift to clear
+    // rooftops (see the TrainTrack constructor's city-clearance loop, HC + c.maxH +
+    // 0.25), so the expectation here mirrors that same rule instead of plain
+    // heightAt+lift.
     const total = LW.trainTrack.total;
     const samples = [0.1, 0.3, 0.5, 0.7, 0.9].map(frac => frac * total);
     const liftTolerance = 0.05;  // allow some tolerance for interpolation
@@ -84,7 +90,12 @@ LW_TESTS.push({
     for (const s of samples) {
       const pos = LW.trainTrack.at(s);
       const dir = pos.clone().normalize();
-      const expectedHeight = LW.heightAt(dir) + LW.trainTrack.lift;
+      let expectedHeight = LW.heightAt(dir) + LW.trainTrack.lift;
+      for (const c of LW.CITIES) {
+        if (dir.angleTo(c.dir) < c.cap + 0.08) {
+          expectedHeight = Math.max(expectedHeight, LW.HC + c.maxH + 0.25);
+        }
+      }
       const actualRadius = pos.length();
 
       if (Math.abs(actualRadius - expectedHeight) > liftTolerance) {
@@ -223,6 +234,41 @@ LW_TESTS.push({
 
     if (LW.idx.train !== 0) {
       throw new Error(`ArrowRight at last train: expected wrap to 0, got ${LW.idx.train}`);
+    }
+    return true;
+  }
+});
+
+LW_TESTS.push({
+  name: 'trains: regression — track never dips below the terrain surface (mountain clipping)',
+  run(LW) {
+    if (!LW.trainTrack) throw new Error('LW.trainTrack not exposed');
+
+    // Bug this guards against: the old TrainTrack lerped elevation between the two
+    // ENDPOINT cities' heights (heightAt(city1) and heightAt(city2)), ignoring any
+    // terrain in between. A mountain range sitting between two cities on the route
+    // would then poke up through the (too-low) interpolated rail. The fix samples
+    // heightAt() directly under each waypoint's own interpolated direction, so this
+    // walks every waypoint along the whole loop (not just the 5 coarse per-city
+    // samples AC2 checks) and asserts the track's radius is never below the terrain
+    // directly beneath it.
+    const tolerance = 0.02;  // small tolerance for the city-clearance raise being legitimate
+    let worstDeficit = 0;
+    let worstAt = null;
+
+    for (const pos of LW.trainTrack.waypoints) {
+      const dir = pos.clone().normalize();
+      const groundHeight = LW.heightAt(dir);
+      const trackRadius = pos.length();
+      const deficit = groundHeight - trackRadius;  // positive means the track is under the ground
+      if (deficit > worstDeficit) {
+        worstDeficit = deficit;
+        worstAt = dir.toArray();
+      }
+    }
+
+    if (worstDeficit > tolerance) {
+      throw new Error(`Track dips below terrain by ${worstDeficit.toFixed(3)} near dir=${worstAt}`);
     }
     return true;
   }

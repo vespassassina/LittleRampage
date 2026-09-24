@@ -103,6 +103,8 @@ spec/plan pass before building (real features, not one-liners).
   Decision: sizes map to different R values (e.g. 10/15/20); switching resizes the current
   planet live, same seed — not a reroll. Reuses the R-scaling work from Sprint P1 (NZ,
   camera limits, orbit altitudes all already expressed in terms of R).
+  - [x] Fix 2026-09-25: scenery, traffic, boats, sky objects and the game ceiling follow
+    the resize (rebuilt from the boot seed; see DECISIONS)
 - [x] Remove the "Drag to orbit · scroll to zoom in close" hint text.
 - [x] Ride menu: one "Ride" button opens a menu (Plane / Car / Boat / Space), replacing the
   separate Ride-a-plane/car/boat/Visit-space buttons. While riding, arrow keys move to the

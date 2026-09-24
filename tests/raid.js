@@ -315,3 +315,90 @@ LW_TESTS.push({
     return true;
   }
 });
+
+LW_TESTS.push({
+  name: 'raid: training balloons are reachable by diving in from the city (regression: unreachable near city cap)',
+  game: 'raid',
+  run(LW) {
+    // Bug: skyFloor() jumps hard at a city's cap+0.08 radius, from HC + c.maxH + 0.25
+    // (inside) down to terrain height (outside). placeBalloons() used to add only
+    // rr(0.1, 1.2) above a balloon's OWN local floor, so a balloon scattered just past
+    // that radius could sit well below the floor a player flying out from the training
+    // town start point is still pinned to - and CLIMB (1.4/s) isn't fast enough to dive
+    // that far down in the short distance left to the balloon. Fixed by raising the
+    // margin to rr(1.2, 2.0).
+    //
+    // placeBalloons() rolls an unseeded random bearing AND margin per balloon
+    // (Math.random(), not the app's seeded rand()), so this test doesn't trust whatever
+    // this run happened to roll for either. It reads the actual lowest margin this run's
+    // 8 balloons landed on (real, live placeBalloons() output - not a hardcoded copy of
+    // the fix's constants, so a future regression that lowers the margin again would
+    // still be caught), then re-applies that same worst-observed margin at every balloon
+    // slot's scatter angle (ang = 0.12 + i*0.06) and every bearing - the full space the
+    // unseeded RNG could have picked.
+    const $ = id => document.getElementById(id);
+    $('play-raid').click();
+    $('p-go').click();
+
+    const R = LW.raid, TRAINING = 8;
+    const city = LW.CITIES[0];
+    const start = city.dir;
+    const SPEED = LW.SPEED, CLIMB = 1.4;   // CLIMB isn't exposed on LW; keep this in sync with index.html by hand
+    const [t1, t2] = (() => {
+      const a = Math.abs(start.y) < 0.9 ? new LW.V3(0, 1, 0) : new LW.V3(1, 0, 0);
+      const u = new LW.V3().crossVectors(a, start).normalize();
+      return [u, new LW.V3().crossVectors(start, u)];
+    })();
+
+    function slerp(a, b, t) {
+      const theta = a.angleTo(b);
+      if (theta < 1e-9) return a.clone();
+      const s0 = Math.sin((1 - t) * theta) / Math.sin(theta), s1 = Math.sin(t * theta) / Math.sin(theta);
+      return a.clone().multiplyScalar(s0).addScaledVector(b, s1).normalize();
+    }
+
+    // Dives from the training town's start altitude toward `dir`, never below skyFloor()
+    // at the current point, at the fastest rate the game allows (CLIMB). Returns the
+    // lowest altitude reachable by the time the plane gets there.
+    function reachableAlt(dir, samples = 400) {
+      let alt = LW.courier.skyFloor(start) + 0.4;   // matches G.alt's start-of-run value
+      const totalAng = start.angleTo(dir);
+      for (let s = 1; s <= samples; s++) {
+        const p = slerp(start, dir, s / samples);
+        const dt = (totalAng / samples * alt) / SPEED;   // advance()'s ang = dist/alt, inverted
+        alt = Math.max(LW.courier.skyFloor(p), alt - CLIMB * dt);
+      }
+      return alt;
+    }
+
+    // This run's actual worst-observed margin: how far each real balloon cleared its own
+    // local floor, minimised over the 8. Stands in for placeBalloons()'s rr() lower bound
+    // without hardcoding it.
+    const observedMinMargin = R.balloons.reduce(
+      (min, b) => Math.min(min, b.mesh.position.length() - LW.courier.skyFloor(b.dir)), Infinity);
+
+    let worstI = -1, worstBearing = -1, worstShortfall = -Infinity;
+    for (let i = 0; i < TRAINING; i++) {
+      const ang = 0.12 + i * 0.06;
+      for (let bearing = 0; bearing < 6.283; bearing += 0.1) {
+        const dir = start.clone().multiplyScalar(Math.cos(ang))
+          .addScaledVector(t1, Math.sin(ang) * Math.cos(bearing))
+          .addScaledVector(t2, Math.sin(ang) * Math.sin(bearing)).normalize();
+        const targetAlt = LW.courier.skyFloor(dir) + observedMinMargin;
+        const shortfall = reachableAlt(dir) - targetAlt;   // positive = can't dive low enough in time
+        if (shortfall > worstShortfall) { worstShortfall = shortfall; worstI = i; worstBearing = bearing; }
+      }
+    }
+
+    LW.games.quit();
+
+    if (worstShortfall > 0) {
+      throw new Error(
+        `Balloon slot ${worstI} at bearing ${worstBearing.toFixed(2)} would be unreachable by ` +
+        `${worstShortfall.toFixed(3)}, even at this run's own worst margin (${observedMinMargin.toFixed(3)}) - ` +
+        `a plane diving in from the training town at the game's CLIMB rate can't shed altitude fast enough`
+      );
+    }
+    return true;
+  }
+});

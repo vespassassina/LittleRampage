@@ -239,12 +239,17 @@ const CITIES = [
   { dir: new V3(-0.200, -0.909, -0.365).normalize(), Lr: 2.6 },
   { dir: new V3(0.148, 0.951, 0.270).normalize(), Lr: 2.4 },
 ];
-for (const c of CITIES) {
-  Object.assign(c, planeMap(c.dir, HC));
-  c.cap = Math.atan((c.Lr + 0.32) / HC);
-  c.inner = c.cap + 0.05;
-  c.outer = c.inner + 0.22;
+// Everything here depends on HC, so applySize() re-runs it on a resize.
+function layoutCities() {
+  for (const c of CITIES) {
+    Object.assign(c, planeMap(c.dir, HC));
+    c.cap = Math.atan((c.Lr + 0.32) / HC);
+    c.inner = c.cap + 0.05;
+    c.outer = c.inner + 0.22;
+    c.top = HC + 0.012;   // road surface
+  }
 }
+layoutCities();
 
 function rawHeight(d) {
   const f1 = 1.6 * NZ, f2 = 2.2 * NZ;
@@ -340,7 +345,7 @@ function ink(maxW) {
   return inkCache.get(maxW);
 }
 // Hull geometry needs welded, smoothed normals or it cracks at hard edges.
-const hullCache = new Map();
+const hullCache = new WeakMap();   // weak: batch sources are throwaway geometries, rebuilt on every resize
 function hullGeo(geo) {
   if (!hullCache.has(geo)) {
     let o = new THREE.BufferGeometry();
@@ -374,6 +379,7 @@ class Batch {
       this.byInk.get(maxW).push(hullGeo(geo).toNonIndexed().applyMatrix4(matrix));
     }
   }
+  // Empties the batch after merging, so it can be filled and built again.
   build(parent) {
     for (const [mat, geos] of this.byMat) parent.add(new THREE.Mesh(mergeGeometries(geos), mat));
     for (const [w, geos] of this.byInk) {
@@ -381,7 +387,24 @@ class Batch {
       parent.add(m);
       ALL_INK_MESHES.push({ mesh: m, w });
     }
+    this.byMat.clear(); this.byInk.clear();
   }
+}
+// Removes what Batch.build() put in `parent` and frees it. Only for groups that hold
+// nothing but batch output: their merged geometries belong to nobody else.
+function clearBatch(parent) {
+  for (const m of parent.children) {
+    m.geometry.dispose();
+    const i = ALL_INK_MESHES.findIndex(e => e.mesh === m);
+    if (i >= 0) ALL_INK_MESHES.splice(i, 1);
+  }
+  parent.clear();
+}
+// Re-runs a generation step from the seed it first ran with, then puts the global
+// stream back. A resize rebuilds the same world at the new size, not a new one.
+function replay(fromSeed, build) {
+  const saved = seed;
+  seed = fromSeed; build(); seed = saved;
 }
 
 const PALETTE = ['#ff6b6b', '#ffd93d', '#6bcbef', '#a66cff', '#ff9f43', '#4ecdc4', '#f78fb3', '#9be15d', '#ff7eb6', '#5ab0ff'];
@@ -390,9 +413,9 @@ const GREENS = ['#5ccf5a', '#3fb35a', '#86dc4e', '#2f9e5b'];
 // ---------- terrain and sea (regeneratable) ----------
 let terrain, sea;
 function generateTerrainAndSea() {
-  // Remove old terrain and sea if they exist
-  if (terrain) scene.remove(terrain);
-  if (sea) scene.remove(sea);
+  // Remove and free old terrain and sea if they exist (the ink materials are shared)
+  if (terrain) { scene.remove(terrain); terrain.geometry.dispose(); terrain.material.dispose(); }
+  if (sea) { scene.remove(sea); sea.geometry.dispose(); sea.material.dispose(); }
 
   let g = new THREE.IcosahedronGeometry(1, 90);
   g.deleteAttribute('normal'); g.deleteAttribute('uv');
@@ -568,8 +591,6 @@ class TrainTrack {
     for (let i = 0; i < order.length; i++) {
       const idx1 = order[i], idx2 = order[(i + 1) % order.length];
       const dir1 = cities[idx1].dir, dir2 = cities[idx2].dir;
-      const startHeight = heightAt(dir1) + lift;
-      const endHeight = heightAt(dir2) + lift;
 
       // Determine interpolation steps: target 2-4° between waypoints
       const arcAngle = Math.acos(Math.max(-1, Math.min(1, dir1.dot(dir2))));
@@ -588,8 +609,16 @@ class TrainTrack {
           slerped.addScaledVector(dir2, Math.sin(t * arcAngle) / Math.sin(arcAngle));
         }
 
-        // Interpolate height (lerp)
-        const h = startHeight + (endHeight - startHeight) * t;
+        // Sample terrain height directly under the interpolated direction, so the
+        // track follows the actual ground (including mountains between cities)
+        // instead of lerping between the two endpoint heights.
+        let h = heightAt(slerped) + lift;
+        // Near a city, buildings extend up through the plateau (see skyFloor() and
+        // its courier-game twin around line ~1957, same c.maxH clamp pattern);
+        // raise the track to clear them like an elevated viaduct through the city.
+        for (const c of cities) {
+          if (slerped.angleTo(c.dir) < c.cap + 0.08) h = Math.max(h, HC + c.maxH + 0.25);
+        }
         const pos = slerped.multiplyScalar(h);
         this.waypoints.push(pos);
 
@@ -637,9 +666,11 @@ class TrainTrack {
   }
 }
 
-// Create the train track
+// Create the train track. Construction is deferred until after CITIES.forEach(buildCity)
+// below (see `let trainTrack` there) because the city-clearance logic in TrainTrack
+// needs each city's c.maxH, which buildCity() computes.
 const TRAIN_CITY_ORDER = [0, 3, 1, 2, 4];
-const trainTrack = new TrainTrack(CITIES, TRAIN_CITY_ORDER);
+let trainTrack;
 
 const WHEELS = mergeGeometries([[-1, -1], [1, -1], [-1, 1], [1, 1]].map(([sx, sz]) =>
   new THREE.CylinderGeometry(0.02, 0.02, 0.016, 10).rotateZ(Math.PI / 2).translate(sx * 0.044, 0.02, sz * 0.055)));
@@ -771,7 +802,7 @@ function initTrainInstancing() {
 }
 
 const NUM_TRAINS = 4;
-const TRAIN_SPEED = trainTrack.total / 90;  // 90 seconds per lap
+let TRAIN_SPEED;  // set once trainTrack exists, below (needs trainTrack.total)
 const CAR_OFFSET = 0.35;  // arc-length spacing for each trailing car
 
 function initTrains() {
@@ -834,8 +865,10 @@ const P = 0.85, SW = 0.13;          // block pitch, half street width
 const PAD = new THREE.BoxGeometry(P - 2 * SW, 0.04, P - 2 * SW).translate(0, 0.02, 0);
 const DASH = new THREE.BoxGeometry(0.016, 0.004, 0.08);
 
-function buildCity(c) {
-  const top = HC + 0.012, Lin = c.Lr - 0.22, K = Math.ceil(c.Lr / P);
+// spawnTraffic: cars are created once, at boot. A rebuild still draws the same random
+// numbers for them, so the rest of the world comes out the same as at boot.
+function buildCity(c, spawnTraffic) {
+  const top = c.top, Lin = c.Lr - 0.22, K = Math.ceil(c.Lr / P);
   const at = (x, z, lift = 0) => c.map(x, z).multiplyScalar(top + lift);
   const frm = (x, z, lift = 0) => frameAt(at(x, z, lift), c.map(x, z), c.t2);
 
@@ -907,15 +940,17 @@ function buildCity(c) {
     const n = li < 2 ? Math.round(loop.total / 3) : 2;
     for (let k = 0; k < n; k++) {
       const color = pick([...PALETTE, '#ffffff', '#ffd93d']);
-      const carDesc = addCarInstance(color);
-      vehicles.car.push(carDesc);  // phantom Object3D: chase camera target + descriptor for tests
       let s = loop.total * k / n + rr(0, 0.3);
       const speed = rr(0.3, 0.45);
+      if (!spawnTraffic) continue;
+      const carDesc = addCarInstance(color);
+      vehicles.car.push(carDesc);  // phantom Object3D: chase camera target + descriptor for tests
       movers.push((t, dt) => {
         s += speed * dt;
+        // c.map and c.top are read live: layoutCities() replaces them on a resize.
         const [x, z] = loop.at(s), [x2, z2] = loop.at(s + 0.04);
-        const up = c.map(x, z), pos = up.clone().multiplyScalar(top);
-        const mat = frameAt(pos, up, c.map(x2, z2).multiplyScalar(top).sub(pos));
+        const up = c.map(x, z), pos = up.clone().multiplyScalar(c.top);
+        const mat = frameAt(pos, up, c.map(x2, z2).multiplyScalar(c.top).sub(pos));
 
         // Keep the phantom chase-camera Object3D in sync with the instance transform.
         mat.decompose(carDesc.position, carDesc.quaternion, carDesc.scale);
@@ -939,13 +974,112 @@ function buildCity(c) {
     }
   });
 }
-initCarInstancing();
-CITIES.forEach(buildCity);
+// ---------- scenery: everything static on the surface ----------
+// It all depends on R, NZ and HC, so it is one function: boot runs it, and applySize()
+// runs it again from the same seed to rebuild the same world at the new size.
+const SCENERY_SEED = seed;
+const sceneryGroup = new THREE.Group(); scene.add(sceneryGroup);   // world batch output
+const mills = new THREE.Group(); scene.add(mills);
+const MILLS = [];   // { hub, w }
+const HAMLETS = [];
+const BOATS = [];   // sailing state per boat, replaced on a rebuild
+const RAIL = new THREE.BoxGeometry(0.06, 0.015, 0.04);  // thin rail strip
+const BLADES = mergeGeometries([0, 1, 2].map(i =>
+  new THREE.BoxGeometry(0.03, 0.24, 0.008).translate(0, 0.13, 0).rotateZ(i * Math.PI * 2 / 3)));
+const TOWER = new THREE.CylinderGeometry(0.03, 0.06, 0.5, 8).translate(0, 0.25, 0);
+const HULL = new THREE.BoxGeometry(0.1, 0.05, 0.26).translate(0, 0.01, 0);
+const BOW = new THREE.CylinderGeometry(0.05, 0.05, 0.05, 3).rotateY(Math.PI / 6).translate(0, 0.01, 0.13);
+const CABIN = new THREE.BoxGeometry(0.07, 0.05, 0.08).translate(0, 0.055, -0.03);
+const STACK = new THREE.CylinderGeometry(0.014, 0.014, 0.06, 8).translate(0, 0.1, -0.05);
+const WAKE = new THREE.BufferGeometry().setFromPoints([new V3(0, 0.02, -0.12), new V3(-0.14, 0.02, -0.5), new V3(0.14, 0.02, -0.5)]);
+WAKE.computeVertexNormals();
+const wakeMat = new THREE.MeshBasicMaterial({ color: '#ffffff', transparent: true, opacity: 0.55, side: THREE.DoubleSide, depthWrite: false });
+
+// first: boot. Creates the cars, trains and boats; a rebuild only moves them.
+function buildScenery(first) {
+  clearBatch(sceneryGroup);
+  mills.clear(); MILLS.length = 0; HAMLETS.length = 0;
+
+  CITIES.forEach(c => buildCity(c, first));
+
+  // Build the track now that every city's c.maxH (tallest building) is known, so the
+  // city-clearance viaduct logic in the TrainTrack constructor has real data to work with.
+  // Train movers read trainTrack and TRAIN_SPEED live, so a new track moves them too.
+  trainTrack = new TrainTrack(CITIES, TRAIN_CITY_ORDER);
+  TRAIN_SPEED = trainTrack.total / 90;  // 90 seconds per lap
+  buildTrainRail();
+  if (first) initTrains();
+
+  // countryside
+  for (let k = 0, placed = 0; k < 9000 && placed < 1700; k++) {
+    const d = randomDir(), h = heightAt(d), a = h - R;
+    if (a < 0.12 || a > 1.05 || nearCity(d, 0.02)) continue;
+    if (forestNoise(d) < -0.03) continue;   // clustered forests
+    addTree(world, d.clone().multiplyScalar(h - 0.02), d, rr(0.7, 1.3));
+    placed++;
+  }
+  // hamlets
+  for (let k = 0, placed = 0; k < 3000 && placed < 40; k++) {
+    const d = randomDir(), h = heightAt(d);
+    if (h < R + 0.12 || h > R + 0.6 || nearCity(d, 0.05)) continue;
+    addHouse(world, frameAt(d.clone().multiplyScalar(h - 0.02), d, randomDir()), rr(0.18, 0.26));
+    HAMLETS.push(d);
+    placed++;
+  }
+  world.build(sceneryGroup);
+
+  // windmills
+  for (let k = 0, placed = 0; k < 3000 && placed < 10; k++) {
+    const d = randomDir(), h = heightAt(d);
+    if (h < R + 0.15 || h > R + 0.7 || nearCity(d, 0.05)) continue;
+    const mill = inked(TOWER, toon('#ffffff'), 0.012);
+    frameAt(d.clone().multiplyScalar(h - 0.02), d, randomDir()).decompose(mill.position, mill.quaternion, mill.scale);
+    const hub = inked(BLADES, toon('#ff6b6b'), 0.01);
+    hub.position.set(0, 0.5, 0.07);
+    mill.add(hub); mills.add(mill);
+    MILLS.push({ hub, w: rr(1.5, 3) });
+    placed++;
+  }
+
+  // boats: a circle of deep water each. The circle grows with R, so it is checked at
+  // more points on a big planet: same spacing as 16 points at R=15.
+  let placed = 0;
+  for (let k = 0; k < 400 && placed < 7; k++) {
+    const d = randomDir(), ang = 0.16;
+    const { map } = planeMap(d, R), r = R * Math.tan(ang);
+    const n = Math.max(16, Math.round(16 * R / 15));
+    if (circle(r, n).some(([x, z]) => heightAt(map(x, z)) > R - 0.15) || heightAt(d) > R - 0.15) continue;
+    const color = pick(['#ff6b6b', '#ffffff', '#ffd93d', '#a66cff']);
+    if (!BOATS[placed]) {
+      if (!first) break;   // a rebuild moves the boot boats, never adds new ones
+      const boat = new THREE.Group();
+      boat.add(inked(HULL, toon(color), 0.01),
+        inked(BOW, toon('#ffffff'), 0.01), inked(CABIN, toon('#ffffff'), 0.01),
+        inked(STACK, toon('#ff3b3b'), 0.006), new THREE.Mesh(WAKE, wakeMat));
+      scene.add(boat); vehicles.boat.push(boat);
+      const b = { boat };
+      BOATS.push(b);
+      movers.push((t, dt) => {
+        b.th += b.w * dt;
+        const up = b.map(b.r * Math.cos(b.th), b.r * Math.sin(b.th));
+        const ahead = b.map(b.r * Math.cos(b.th + b.w * 0.2), b.r * Math.sin(b.th + b.w * 0.2));
+        const pos = up.clone().multiplyScalar(R - 0.015 + Math.sin(t * 2 + b.ph) * 0.008);
+        frameAt(pos, up, ahead.sub(up)).decompose(boat.position, boat.quaternion, boat.scale);
+      });
+    }
+    Object.assign(BOATS[placed], { map, r, th: rr(0, 6.28), w: rr(0.12, 0.2) * (rand() < 0.5 ? 1 : -1), ph: rr(0, 6) });
+    placed++;
+  }
+  // Less water at this size than at boot: boats without a circle share one.
+  for (let i = placed; placed && i < BOATS.length; i++) {
+    const { map, r } = BOATS[i % placed];
+    Object.assign(BOATS[i], { map, r });
+  }
+}
 
 // ---------- train rail mesh ----------
 function buildTrainRail() {
   const railMaterial = toon('#7a6a5a');  // brownish rail color
-  const RAIL = new THREE.BoxGeometry(0.06, 0.015, 0.04);  // thin rail strip
 
   // Sample the track and add rail boxes
   const railSamples = Math.ceil(trainTrack.total / 0.15);  // sample every 0.15 world units
@@ -961,76 +1095,14 @@ function buildTrainRail() {
   }
 }
 
-buildTrainRail();
-initTrains();
+initCarInstancing();
+buildScenery(true);
+movers.push((t, dt) => { for (const m of MILLS) m.hub.rotation.z += m.w * dt; });
 
-// ---------- countryside ----------
-for (let k = 0, placed = 0; k < 9000 && placed < 1700; k++) {
-  const d = randomDir(), h = heightAt(d), a = h - R;
-  if (a < 0.12 || a > 1.05 || nearCity(d, 0.02)) continue;
-  if (forestNoise(d) < -0.03) continue;   // clustered forests
-  addTree(world, d.clone().multiplyScalar(h - 0.02), d, rr(0.7, 1.3));
-  placed++;
-}
-// hamlets
-const HAMLETS = [];
-for (let k = 0, placed = 0; k < 3000 && placed < 40; k++) {
-  const d = randomDir(), h = heightAt(d);
-  if (h < R + 0.12 || h > R + 0.6 || nearCity(d, 0.05)) continue;
-  addHouse(world, frameAt(d.clone().multiplyScalar(h - 0.02), d, randomDir()), rr(0.18, 0.26));
-  HAMLETS.push(d);
-  placed++;
-}
-world.build(scene);
-
-// windmills
-{
-  const BLADES = mergeGeometries([0, 1, 2].map(i =>
-    new THREE.BoxGeometry(0.03, 0.24, 0.008).translate(0, 0.13, 0).rotateZ(i * Math.PI * 2 / 3)));
-  const TOWER = new THREE.CylinderGeometry(0.03, 0.06, 0.5, 8).translate(0, 0.25, 0);
-  for (let k = 0, placed = 0; k < 3000 && placed < 10; k++) {
-    const d = randomDir(), h = heightAt(d);
-    if (h < R + 0.15 || h > R + 0.7 || nearCity(d, 0.05)) continue;
-    const mill = inked(TOWER, toon('#ffffff'), 0.012);
-    frameAt(d.clone().multiplyScalar(h - 0.02), d, randomDir()).decompose(mill.position, mill.quaternion, mill.scale);
-    const hub = inked(BLADES, toon('#ff6b6b'), 0.01);
-    hub.position.set(0, 0.5, 0.07);
-    mill.add(hub); scene.add(mill);
-    const w = rr(1.5, 3);
-    movers.push((t, dt) => { hub.rotation.z += w * dt; });
-    placed++;
-  }
-}
-
-// ---------- boats ----------
-{
-  const HULL = new THREE.BoxGeometry(0.1, 0.05, 0.26).translate(0, 0.01, 0);
-  const BOW = new THREE.CylinderGeometry(0.05, 0.05, 0.05, 3).rotateY(Math.PI / 6).translate(0, 0.01, 0.13);
-  const CABIN = new THREE.BoxGeometry(0.07, 0.05, 0.08).translate(0, 0.055, -0.03);
-  const STACK = new THREE.CylinderGeometry(0.014, 0.014, 0.06, 8).translate(0, 0.1, -0.05);
-  const WAKE = new THREE.BufferGeometry().setFromPoints([new V3(0, 0.02, -0.12), new V3(-0.14, 0.02, -0.5), new V3(0.14, 0.02, -0.5)]);
-  WAKE.computeVertexNormals();
-  const wakeMat = new THREE.MeshBasicMaterial({ color: '#ffffff', transparent: true, opacity: 0.55, side: THREE.DoubleSide, depthWrite: false });
-  for (let k = 0, placed = 0; k < 400 && placed < 7; k++) {
-    const d = randomDir(), ang = 0.16;
-    const { map } = planeMap(d, R), r = R * Math.tan(ang);
-    if (circle(r, 16).some(([x, z]) => heightAt(map(x, z)) > R - 0.15) || heightAt(d) > R - 0.15) continue;
-    const boat = new THREE.Group();
-    boat.add(inked(HULL, toon(pick(['#ff6b6b', '#ffffff', '#ffd93d', '#a66cff'])), 0.01),
-      inked(BOW, toon('#ffffff'), 0.01), inked(CABIN, toon('#ffffff'), 0.01),
-      inked(STACK, toon('#ff3b3b'), 0.006), new THREE.Mesh(WAKE, wakeMat));
-    scene.add(boat); vehicles.boat.push(boat);
-    let th = rr(0, 6.28); const w = rr(0.12, 0.2) * (rand() < 0.5 ? 1 : -1), ph = rr(0, 6);
-    movers.push((t, dt) => {
-      th += w * dt;
-      const up = map(r * Math.cos(th), r * Math.sin(th));
-      const ahead = map(r * Math.cos(th + w * 0.2), r * Math.sin(th + w * 0.2));
-      const pos = up.clone().multiplyScalar(R - 0.015 + Math.sin(t * 2 + ph) * 0.008);
-      frameAt(pos, up, ahead.sub(up)).decompose(boat.position, boat.quaternion, boat.scale);
-    });
-    placed++;
-  }
-}
+// Things that fly at a fixed height above sea level, on a pivot at the planet's centre.
+// applySize() lifts them to the new R; movers that bob them read R live too.
+const aloft = [];   // { obj, lift }
+function fly(obj, lift) { aloft.push({ obj, lift }); obj.position.y = R + lift; }
 
 // ---------- planes and their smoke trails ----------
 const PUFFS_PER_PLANE = 48, PLANES = 4;
@@ -1059,8 +1131,8 @@ for (let p = 0; p < PLANES; p++) {
   pivot.quaternion.setFromUnitVectors(UP, randomDir());
   pivot.rotateY(rr(0, 6.28));
   const plane = makePlane(PALETTE[p * 2]);
-  const alt = rr(R + 3.1, R + 4.3);
-  plane.position.y = alt;
+  const lift = rr(3.1, 4.3);
+  fly(plane, lift);
   pivot.add(plane); scene.add(pivot); vehicles.plane.push(plane);
   const w = rr(0.07, 0.1), ph = rr(0, 6);
   let emit = 0, next = 0;
@@ -1068,7 +1140,7 @@ for (let p = 0; p < PLANES; p++) {
   movers.push((t, dt) => {
     pivot.rotateX(w * dt);
     plane.rotation.z = Math.sin(t * 0.6 + ph) * 0.3;
-    plane.position.y = alt + Math.sin(t * 0.4 + ph) * 0.25;
+    plane.position.y = R + lift + Math.sin(t * 0.4 + ph) * 0.25;
     plane.userData.prop.rotation.z += dt * 40;
     emit += dt;
     if (emit > 0.07 && plane.visible) {
@@ -1119,11 +1191,11 @@ for (let k = 0; k < 4; k++) {
   // planet-v2 AC4: balloons must clear the mountains. The true tallest peak on the
   // terrain mesh sits at ~R+2.65 (measured over every vertex of the icosphere); give
   // balloons a floor above that instead of the old R+2.2, which could clip a summit.
-  const alt = rr(R + 3.0, R + 3.6);
-  b.position.y = alt;
+  const lift = rr(3.0, 3.6);
+  fly(b, lift);
   pivot.add(b); scene.add(pivot); skyBalloons.push(b);
   const w = rr(0.01, 0.02), ph = rr(0, 6);
-  movers.push((t, dt) => { pivot.rotateX(w * dt); b.position.y = alt + Math.sin(t * 0.8 + ph) * 0.12; });
+  movers.push((t, dt) => { pivot.rotateX(w * dt); b.position.y = R + lift + Math.sin(t * 0.8 + ph) * 0.12; });
 }
 
 // ---------- satellites and a space station ----------
@@ -1143,12 +1215,12 @@ function blinker(x, y, z) {
   const b = new THREE.Mesh(new THREE.SphereGeometry(0.025, 8, 6), blinkMat);
   b.position.set(x, y, z); return b;
 }
-// Launches something onto a tilted circular orbit; the planet is at local -Y.
-function orbit(obj, alt, w) {
+// Launches something onto a tilted circular orbit, `lift` above sea level; the planet is at local -Y.
+function orbit(obj, lift, w) {
   const pivot = new THREE.Object3D();
   pivot.quaternion.setFromUnitVectors(UP, randomDir());
   pivot.rotateY(rr(0, 6.28));
-  obj.position.y = alt;
+  fly(obj, lift);
   pivot.add(obj); scene.add(pivot);
   movers.push((t, dt) => pivot.rotateX(w * dt));
 }
@@ -1169,7 +1241,7 @@ function makeSatellite(color) {
 const SAT_COLORS = ['#ffcc33', '#e8e8f0', '#ff9f43', '#ffcc33', '#a66cff', '#e8e8f0'];
 SAT_COLORS.forEach(color => {
   const sat = makeSatellite(color);
-  orbit(sat, rr(R + 5.2, R + 6.8), rr(0.05, 0.08));
+  orbit(sat, rr(5.2, 6.8), rr(0.05, 0.08));
   sat.userData.chase = { off: new V3(0, 0.7, -1.7), look: new V3(0, -0.7, 0.4) };
   vehicles.sat.push(sat);
 });
@@ -1195,15 +1267,17 @@ function makeStation() {
   return g;
 }
 const station = makeStation();
-orbit(station, R + 8, 0.035);
+orbit(station, 8, 0.035);
 station.userData.chase = { off: new V3(0, 1.1, -2.6), look: new V3(0, -0.5, 0.4) };
 vehicles.sat.unshift(station);   // the first ride is the station
 movers.push((t) => { blinkMat.color.set(Math.sin(t * 4) > 0.3 ? '#ff3b3b' : '#5a1020'); });
 
 // ---------- clouds ----------
 const clouds = new THREE.Group();
-{
-  const CB = new Batch(), PUFF = new THREE.IcosahedronGeometry(1, 2), mat = toon('#ffffff', null, SOFT_RAMP);
+const CLOUD_SEED = seed, PUFF = new THREE.IcosahedronGeometry(1, 2);
+function buildClouds() {   // applySize() replays it at the new R
+  clearBatch(clouds);
+  const CB = new Batch(), mat = toon('#ffffff', null, SOFT_RAMP);
   for (let k = 0; k < 34; k++) {
     const d = randomDir(), alt = rr(R + 2.3, R + 3.6), [t1, t2] = tangentBasis(d);
     const n = 3 + Math.floor(rand() * 4);
@@ -1216,6 +1290,7 @@ const clouds = new THREE.Group();
   }
   CB.build(clouds);
 }
+buildClouds();
 scene.add(clouds);
 movers.push((t, dt) => { clouds.rotation.y += dt * 0.012; });
 
@@ -1348,7 +1423,8 @@ addEventListener('keydown', e => {
 
 // ---------- games: shared flight, camera, HUD and panels ----------
 // Sky Courier and Sky Raid fly the same plane; each game only adds its rules (GAMES below).
-const SPEED = 1.8, TURN = 1.7, CLIMB = 1.4, CEIL = R + 5;
+const SPEED = 1.8, TURN = 1.7, CLIMB = 1.4;
+let CEIL = R + 5;   // flight ceiling; applySize() moves it with R
 
 const player = new THREE.Group(), playerBody = makePlane('#ffd93d');
 const parcel = inked(new THREE.BoxGeometry(0.12, 0.08, 0.12).translate(0, 0.09, -0.06), toon('#c98b4f'), 0.01);
@@ -1524,10 +1600,12 @@ function gameStep(dt, t) {
 }
 
 // ---------- Sky Courier (see docs/specs/sky-courier.md) ----------
+// Hamlets move when the planet is resized: applySize() swaps them via hamletTowns().
+const hamletTowns = () => HAMLETS.filter((d, i) => i % 8 === 0).slice(0, 5)
+  .map((d, i) => ({ name: ['Mapleton', 'Puddle Bay', 'Windy Hill', 'Cloudford', 'Snug Harbor'][i], dir: d }));
 const TOWNS = [
   ...CITIES.map((c, i) => ({ name: ['Pop Town', 'Zap City', 'Boomville', 'Fizzdale', 'Rocket Bluff'][i], dir: c.dir })),
-  ...HAMLETS.filter((d, i) => i % 8 === 0).slice(0, 5)
-    .map((d, i) => ({ name: ['Mapleton', 'Puddle Bay', 'Windy Hill', 'Cloudford', 'Snug Harbor'][i], dir: d })),
+  ...hamletTowns(),
 ];
 const DELIVER_R = 0.9, RING_R = 0.5;
 
@@ -1687,7 +1765,14 @@ function placeBalloons() {
     const ang = 0.12 + i * 0.06, bear = Math.random() * 6.283;
     b.dir.copy(CITIES[0].dir).multiplyScalar(Math.cos(ang))
       .addScaledVector(t1, Math.sin(ang) * Math.cos(bear)).addScaledVector(t2, Math.sin(ang) * Math.sin(bear)).normalize();
-    const alt = Math.min(skyFloor(b.dir) + rr(0.1, 1.2), CEIL - 0.5);
+    // Margin above the balloon's own local floor. skyFloor() jumps hard at a city's
+    // cap+0.08 radius (from HC + c.maxH + 0.25 down to terrain height), so a balloon
+    // that scattered just past that radius can sit well below the floor a player
+    // diving in from the city (at CLIMB=1.4/s) hasn't had time to shed - a tiny margin
+    // here used to leave some balloons effectively unreachable. 1.2 minimum clears
+    // that worst case for this training town (checked by simulating the dive at every
+    // approach bearing and the lowest-margin roll; see tests/raid.js).
+    const alt = Math.min(skyFloor(b.dir) + rr(1.2, 2.0), CEIL - 0.5);
     b.base.copy(b.dir).multiplyScalar(alt);
     b.mesh.position.copy(b.base); b.mesh.quaternion.setFromUnitVectors(UP, b.dir);
     b.alive = b.mesh.visible = true;
@@ -1859,10 +1944,21 @@ function applySize(size) {
   NZ = cfg.NZ;
   HC = cfg.HC;
 
-  // Regenerate terrain and sea
+  // Regenerate terrain and sea (cities first: they flatten the terrain)
+  layoutCities();
   generateTerrainAndSea();
 
+  // Rebuild everything on the surface and move everything in the sky, from the boot
+  // seeds, so the same size always gives the same world.
+  replay(SCENERY_SEED, () => buildScenery(false));
+  TOWNS.splice(CITIES.length, Infinity, ...hamletTowns());
+  replay(CLOUD_SEED, buildClouds);
+  for (const a of aloft) a.obj.position.y = R + a.lift;
+  CEIL = R + 5;
+  applyQuality(qualityLevel);   // new ink meshes follow the current quality
+
   // Update atmosphere
+  atmosphere.geometry.dispose();
   atmosphere.geometry = new THREE.SphereGeometry(cfg.atmosphere, 64, 48);
 
   // Update moon position (it's inside the pivot, which is at origin, so we update moon.position)
@@ -2003,7 +2099,8 @@ Object.defineProperty(LW, 'HC', { get: () => HC, configurable: true });
 Object.defineProperty(LW, 'mode', { get: () => mode, configurable: true });
 LW.skyBalloons = skyBalloons;
 // Trains
-LW.trainTrack = trainTrack;   // expose for tests (trains AC1/AC2/AC4)
+Object.defineProperty(LW, 'trainTrack', { get: () => trainTrack, configurable: true });   // live: a resize builds a new track (trains AC1/AC2/AC4)
+LW.scenery = { world: sceneryGroup, mills, clouds, inkMeshes: ALL_INK_MESHES };   // expose for tests (planet-size-scenery.js)
 LW.worldBatch = world;   // expose for tests (trains AC3: rail mesh merged into batch)
 LW.ready = true;   // last thing set: tests.html polls this before running checks
 </script>

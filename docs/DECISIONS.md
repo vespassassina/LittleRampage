@@ -2,6 +2,80 @@
 
 Newest first.
 
+## 2026-09-25 — Three bug reports fixed: resize scenery, train clipping, raid balloons
+
+- **Reports.** Planet resize didn't reposition surface scenery; trains clipped through
+  mountains and buildings; some Sky Raid training balloons spawned too low to hit.
+  Root-caused by direct code reading, then three fixes built in sequence to avoid
+  concurrent edits to `index.html`.
+- **Train clipping.** `TrainTrack` elevation was lerped between the two hop-endpoint
+  cities' own heights, ignoring terrain between them, and had no city-building
+  clearance. Fixed: each waypoint now samples `heightAt(dir)` at its own interpolated
+  direction, raised to `HC + c.maxH + 0.25` inside a city's cap (the same clearance
+  `skyFloor()` already used for planes/balloons). `tests/trains.js` AC2 updated to
+  match, plus a new regression test walking every waypoint on the loop.
+- **Raid balloons.** Training balloons spawned at `skyFloor(dir) + rr(0.1, 1.2)` — too
+  thin a margin given `skyFloor`'s step discontinuity at a city-cap boundary, so some
+  balloons landed effectively at their local floor with almost no room to climb into.
+  Margin widened to `rr(1.2, 2.0)`, picked by a numeric sweep against the real training-
+  town geometry. `tests/raid.js` gained a regression test simulating a real dive with
+  the game's own `CLIMB`/`SPEED` constants.
+- **Resize scenery.** See the entry directly below (built by the `developer` agent,
+  largest of the three fixes — rebuilds all scenery, traffic and sky objects on resize).
+- **Coordinator's independent verification (all three together, after all three
+  landed uncommitted in the same tree).** Two hard-reloaded `tests.html` runs showed
+  121/124, not the 125/125 the resize entry below claims — traced to `localStorage`
+  key `lw-size` left at `'small'` from earlier browser-pane use in this session, so
+  tests assuming the R=15 default ran at R=10 instead. Not a regression in any of the
+  three fixes: after `localStorage.clear()` and a reload, **124/124 passed**, twice.
+  (**124, not 125** — the resize entry's count is off by one; the actual new-test count
+  from `tests/planet-size-scenery.js` is 10, as that entry's own checks section says.)
+  Manual UI walkthrough confirmed each fix live: resized small→large, scenery (city,
+  trees, mountains, camera framing) rebuilt consistently with no floating/sunk
+  geometry; rode a train and watched it follow the rail-bed over a mountain range with
+  no clipping; started Sky Raid training and read the 8 live balloon positions via
+  console — all sat 2.2–4.3 units above the R=15 surface, a healthy margin, no balloon
+  resting at its local floor. No leftover `node_modules`/`package.json` in the tree.
+
+## 2026-09-25 — Planet resize rebuilds the scenery from the boot seed
+
+- **Bug.** `LW.size.set()` rebuilt terrain, sea, atmosphere and moon, but everything made
+  once at boot kept the boot radius: city blocks, roads, parks, rail, trees, hamlets,
+  windmills, the train track, car traffic, boats. Planes, sky balloons, satellites, the
+  station, clouds and the game ceiling (`CEIL`) had the same fault. At large, planes and
+  clouds sat inside the planet and the game plane was clamped under the city roofs. City
+  caps and plane maps were also stale, so the terrain plateau itself was the wrong size.
+- **Decision: rebuild in place, same seed.** Rejected: reload the page on resize. Simplest
+  code, but the spec says the planet resizes live, and tests run in one page. Chosen:
+  - `layoutCities()` recomputes the HC-based city fields (plus `c.top`, the road radius).
+  - `buildScenery(first)` holds the old one-time block: cities, track, rail, countryside,
+    hamlets, windmills, boats. The batch builds into its own group. `clearBatch()`
+    disposes the merged geometries and drops their `ALL_INK_MESHES` entries first.
+  - `replay(seed, fn)` re-runs a step from the seed it had at boot, then restores the
+    stream. A rebuild at the boot size is bit-identical to boot (checked). A→B→A gives
+    back A. Cars, trains and boats are created once. A rebuild still draws their random
+    numbers, so the stream does not shift, and moves them: movers read `c.map`, `c.top`,
+    `trainTrack` and each boat's state live.
+  - Sky objects store height above sea level (`fly(obj, lift)`). `applySize()` lifts them,
+    and bobbing movers read `R` live. Clouds are rebuilt from `CLOUD_SEED`. `CEIL` is reset.
+  - Leaks closed on the same path: `hullCache` is a `WeakMap`, since every rebuilt building
+    used to add an entry forever. Old terrain, sea and atmosphere geometries are disposed.
+- **One behaviour change at large only.** The boat water check samples a circle that grows
+  with R. At 16 points a large-planet boat grazed a shore for about a sixth of its lap. Points
+  now scale as `max(16, round(16·R/15))`, so small and mid keep their exact boot layout.
+  Boats left without water at a new size share another boat's circle.
+- **Cost.** A resize takes about 0.4 s in headless Brave (SwiftShader) on this Mac, mostly
+  world generation. A phone will be slower. A stored non-mid size still builds mid at boot
+  first, then rebuilds. Building at the stored size directly would halve that. Not done:
+  it would move boot code around for a one-off cost.
+- **Checks.** New `tests/planet-size-scenery.js` (10 tests): city ground, track waypoints,
+  cars, windmills and hamlets, boats, sky and clouds at the new R, the game ceiling,
+  A→B→A determinism, and disposal (old geometries fire `dispose`, scene and ink list stay
+  bounded). Before the fix all 10 failed: track, cars, boats and the ceiling on the real
+  fault, the rest on the missing `LW.scenery` hook. Full suite 125/125 in headless Brave,
+  with the stdlib server and a result POST, no npm.
+- Supersedes the "known gap" in the Trains entry below: the track now resizes.
+
 ## 2026-09-24 — Trains: rideable, single loop through all 5 cities
 
 - **What shipped**, per [docs/specs/trains.md](specs/trains.md): a new `TrainTrack` class

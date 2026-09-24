@@ -2,6 +2,22 @@
 
 Newest first.
 
+## 2026-09-24 — Ride menu: vehicle cycling via arrow keys (Sandbox UI polish)
+
+- **What shipped:** replaced four separate ride buttons (Ride a plane / Ride a car / Ride a boat / Visit space) with one "Ride" button that opens a submenu (Plane / Car / Boat / Space). While riding (any mode except orbit), ArrowRight and ArrowLeft cycle to the next/previous instance in the same category, wrapping at the ends. Arrow keys do not apply in orbit mode (orbit controls keep ArrowUp/Down for zoom and ArrowLeft/Right for rotation) or during an active game (KEYMAP owns the arrows for flight).
+
+- **Keyboard choice:** ArrowLeft/Right were already bound to orbit rotation, so reusing them for vehicle cycling required careful gating: `if (mode === 'orbit') return;` and `if (G.active) return;` guard the new handler, leaving orbit zoom/rotation (Up/Down, Left/Right) and game flight controls untouched. ArrowUp/Down do not cycle vehicles (the orbit handler owns them in orbit mode, and games own them via KEYMAP; in ride mode they are simply ignored).
+
+- **UI pattern:** the Ride submenu matches the existing planet-size selector's button-group style (hidden div with data-attribute items, toggle on parent click, click item to select and close menu).
+
+- **Menu state:** menu is `hidden` attribute by default, toggled with `.hidden` property (not display:none) for simplicity. Clicking a submenu item closes the menu; clicking the Ride button again toggles open/closed.
+
+- **Vehicle cycling internals:** reused existing `setMode(category)` for menu clicks (which already handles camera reset, controls.enabled = false, and `idx[mode]` increment). New arrow handler directly cycles `idx[mode]` and updates `target` without re-triggering `setMode` (avoids resetting the camera mid-ride).
+
+- **Verification:** 100/100 tests passing in a real browser (Playwright), including 10 core tests (Ride menu UI, arrow key cycling, wrapping, mode guards) and 7 adversarial tests (rapid mode switching, escape key, game transitions, all four modes). All 83 existing tests still pass (no regressions).
+
+- **Commit:** ticked PLAN.md checkbox; recorded this decision; staged explicit files (index.html, tests.html, tests/ride-menu.js, tests/ride-menu-adversarial.js, docs/PLAN.md, docs/DECISIONS.md).
+
 ## 2026-09-24 — Planet-size selector (small/mid/large); fixed two bugs the builder agent pushed unverified
 
 - **What shipped:** an Options-menu size selector (small=R10 / mid=R15 / large=R20,

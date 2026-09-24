@@ -104,7 +104,7 @@ spec/plan pass before building (real features, not one-liners).
   planet live, same seed — not a reroll. Reuses the R-scaling work from Sprint P1 (NZ,
   camera limits, orbit altitudes all already expressed in terms of R).
 - [x] Remove the "Drag to orbit · scroll to zoom in close" hint text.
-- [ ] Ride menu: one "Ride" button opens a menu (Plane / Car / Boat / Space), replacing the
+- [x] Ride menu: one "Ride" button opens a menu (Plane / Car / Boat / Space), replacing the
   separate Ride-a-plane/car/boat/Visit-space buttons. While riding, arrow keys move to the
   next/previous instance of the same category (cars cycle to other cars, etc.), wrapping
   around at the ends.

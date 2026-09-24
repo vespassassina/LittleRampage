@@ -142,10 +142,13 @@
 </div>
 <div id="ui">
   <button data-mode="orbit" class="on">Orbit</button>
-  <button data-mode="plane">Ride a plane</button>
-  <button data-mode="car">Ride a car</button>
-  <button data-mode="boat">Ride a boat</button>
-  <button data-mode="sat">Visit space</button>
+  <button id="ride-btn">Ride</button>
+  <div id="ride-menu" hidden>
+    <button data-ride-mode="plane">Plane</button>
+    <button data-ride-mode="car">Car</button>
+    <button data-ride-mode="boat">Boat</button>
+    <button data-ride-mode="sat">Space</button>
+  </div>
   <button id="spin" class="on">Spin</button>
   <button id="qbtn">Quality: High</button>
   <button data-size="small" id="sbtn-small">Small</button>
@@ -1042,7 +1045,7 @@ const moon = (() => {
 
 // ---------- controls and camera modes ----------
 const controls = new OrbitControls(camera, renderer.domElement);
-window.LW = { camera, scene, renderer, vehicles, PALETTE };   // handy from the dev console
+window.LW = { camera, scene, renderer, vehicles, PALETTE, controls };   // handy from the dev console
 controls.enableDamping = true; controls.dampingFactor = 0.06;
 controls.enablePan = false;
 controls.minDistance = R + 0.9; controls.maxDistance = 8 * R;   // maxDistance scales with R, same as start distance
@@ -1066,6 +1069,7 @@ const CHASE = {
 };
 let mode = 'orbit', target = null;
 const idx = { plane: -1, car: -1, boat: -1, sat: -1 };
+window.LW.idx = idx;  // expose for tests
 function setMode(m, resetView = true) {
   document.querySelectorAll('[data-mode]').forEach(b => b.classList.toggle('on', b.dataset.mode === m));
   mode = m;
@@ -1087,7 +1091,19 @@ function setMode(m, resetView = true) {
   target = vehicles[m][idx[m]];
   controls.enabled = false;
 }
-document.querySelectorAll('[data-mode]').forEach(b => b.onclick = () => setMode(b.dataset.mode));
+document.querySelector('[data-mode="orbit"]').onclick = () => setMode('orbit');
+const rideBtn = document.getElementById('ride-btn');
+const rideMenu = document.getElementById('ride-menu');
+rideBtn.onclick = () => {
+  rideMenu.hidden = !rideMenu.hidden;
+};
+document.querySelectorAll('#ride-menu [data-ride-mode]').forEach(item => {
+  item.onclick = () => {
+    const mode = item.dataset.rideMode;
+    setMode(mode);
+    rideMenu.hidden = true;
+  };
+});
 addEventListener('keydown', e => { if (e.key === 'Escape') { if (G.active) quitGame(); else setMode('orbit'); } });
 
 // Sandbox UI polish: Up/Down zoom, Left/Right orbit around the target, active only while
@@ -1114,6 +1130,19 @@ addEventListener('keydown', e => {
     _arrowOffset.applyAxisAngle(camera.up, e.key === 'ArrowLeft' ? ARROW_ORBIT_STEP : -ARROW_ORBIT_STEP);
     camera.position.copy(controls.target).add(_arrowOffset);
     controls.update();
+    e.preventDefault();
+  }
+});
+
+// Arrow keys cycle through vehicles while riding (left/right) — guard against orbit mode and active game
+addEventListener('keydown', e => {
+  if (mode === 'orbit') return;
+  if (G.active) return;
+  if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') {
+    idx[mode] = e.key === 'ArrowRight'
+      ? (idx[mode] + 1) % vehicles[mode].length
+      : (idx[mode] - 1 + vehicles[mode].length) % vehicles[mode].length;
+    target = vehicles[mode][idx[mode]];
     e.preventDefault();
   }
 });

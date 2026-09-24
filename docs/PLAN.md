@@ -116,9 +116,15 @@ spec/plan pass before building (real features, not one-liners).
   (new controls) — same rule: using them should not stop the idle spin either.
 
 Raised 2026-09-23 (second batch), needs design before building:
-- [ ] Trains: a new vehicle running on tracks, presumably city to city like cars on ring
-  roads. Track network, spawn/route logic, instancing approach (reuse the car-instancing
-  pattern from P1 AC5?) all undecided.
+- [ ] Trains ([spec](specs/trains.md)). Design done 2026-09-24: rideable, single loop
+  through all 5 cities, visiting order [0,3,1,2,4]→0. Sub-tasks:
+  - [ ] 3D track-loop class: slerp-interpolated waypoints between cities in the fixed
+    order, elevation via heightAt()+lift, at(s) returns a position (AC1, AC2)
+  - [ ] Static rail-bed mesh along the route, merged into the world Batch (AC3)
+  - [ ] Train instancing (locomotive + carriages), N trains evenly spaced, looping
+    movement along the track (AC4)
+  - [ ] Train as 5th Ride-menu category, wired into existing arrow-key cycling (AC5)
+  - [ ] Tests for AC1-5, full regression pass (AC6)
 - [ ] Factories and power plants scattered around the terrain (not just in cities), as
   destructible scenery: a dramatic explosion when destroyed ("blow like crazy when hit").
   Overlaps with the Kaiju epic's destructible-scenery work (K1 AC3) and Sky Raid's bombs

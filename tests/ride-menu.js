@@ -60,7 +60,7 @@ LW_TESTS.push({
     if (!menu) throw new Error('Ride menu (#ride-menu) not found');
 
     const items = menu.querySelectorAll('[data-ride-mode]');
-    if (items.length !== 4) throw new Error(`Submenu should have 4 items, found ${items.length}`);
+    if (items.length !== 5) throw new Error(`Submenu should have 5 items, found ${items.length}`);
 
     const modes = Array.from(items).map(i => i.dataset.rideMode);
     const expectedModes = ['plane', 'car', 'boat', 'sat'];

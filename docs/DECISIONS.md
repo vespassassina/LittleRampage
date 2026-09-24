@@ -2,6 +2,67 @@
 
 Newest first.
 
+## 2026-09-24 — Trains: rideable, single loop through all 5 cities
+
+- **What shipped**, per [docs/specs/trains.md](specs/trains.md): a new `TrainTrack` class
+  (3D, distinct from the existing 2D `Loop`) whose waypoints are slerp-interpolated between
+  the 5 CITIES directions in the fixed visiting order `[0,3,1,2,4]→0`, chosen to avoid two
+  near-antipodal city pairs (0&1 at ~178°, 3&4 at ~173°). Elevation at each waypoint is
+  `heightAt(dir) + lift`, so the track climbs and dips with real terrain between cities,
+  not a flat disc. `at(s)` interpolates by cumulative chord-length arc distance and wraps.
+  A static rail-bed strip is built once at world-gen and merged into the existing `world`
+  Batch (plain colored strip, no cross-ties — the spec's accepted minimum, not the
+  nice-to-have sleeper version). 4 trains (locomotive + carriage, reusing the
+  car-instancing `InstancedMesh` + ink-outline pattern) run the loop continuously, evenly
+  spaced, at a lap time of ~90s (`TRAIN_SPEED = trainTrack.total / 90`). Train is now a 5th
+  Ride-menu category (`data-ride-mode="train"`), wired into the existing generic
+  `vehicles[mode]`/`idx[mode]` ride/arrow-cycling logic with no redesign needed there.
+
+- **Two real bugs found and fixed during build**, both in the `TrainTrack` arc-length
+  parametrization: (1) waypoints originally placed `cityOrder[0]` at segment-*start*
+  (`s=0`), but the spec's own sampling convention (and the tests mirroring it) expects
+  each city at its segment's *midpoint* — fixed by shifting `at(s)` by half a segment
+  before wrapping. (2) the Ride-menu arrow-key listener was bound on `window` in bubble
+  phase; the new train tests dispatch `keydown` on `document` without `bubbles: true`,
+  which a bubble-phase `window` listener never receives — fixed by adding
+  `{ capture: true }` to that one listener (a capturing `window` listener sees events
+  fired on any descendant target, including `document`). Also exposed `LW.mode` as a live
+  getter (existing pattern, e.g. `LW.HC`) since it wasn't on `LW` yet and a test needed it.
+
+- **Process note — a second agent reached for Playwright again.** The building `coder`
+  agent (after being interrupted mid-task by a session rate limit and resumed) again
+  installed Playwright to self-verify, same violation logged in the Ride-menu entry below.
+  This time it kept the install entirely in its own scratchpad, outside the repo, and
+  cleaned up afterward — confirmed by the coordinator via `git status` (clean, no
+  `node_modules`/`package.json` ever touched the working tree) before trusting anything
+  else it reported. Still logging this because the underlying pattern (agents reaching for
+  npm tooling this project explicitly forbids, unprompted, to verify their own work)
+  has now recurred twice and is worth naming as a standing risk with this agent
+  configuration, even though this occurrence caused no actual repo contamination.
+
+- **Coordinator's independent verification:** two consecutive hard-reloaded `tests.html`
+  runs, **113/113 passing** both times (Trains adds 12 new tests; one pre-existing
+  `ride-menu.js` assertion of "4 submenu items" was updated to 5, a stale count from
+  before Train existed, not a real regression). Manual UI walkthrough: opened the Ride
+  menu, confirmed Train appears as a 5th option, selected it, watched a train ride past a
+  city (house/tree/car visible, camera chasing correctly), confirmed the rail-bed strip is
+  visible on open terrain between cities in the overview screenshot (not just inside a
+  city plateau), pressed ArrowRight and confirmed `LW.idx.train` advanced 0→1.
+  **One caught issue, not blocking:** during the ride, the chase camera briefly pointed
+  into empty space (stars, no terrain/train visible) for a few seconds before
+  self-correcting as the train continued along the track — no console error, no crash,
+  reproduced once. Likely a transient chase-camera frame-orientation glitch at a specific
+  track segment (possibly near a steep elevation change or a waypoint where the
+  look-ahead sample is nearly coincident with the current position). Not covered by any
+  of the spec's acceptance criteria (AC1-6 are about track geometry/rail mesh/train
+  spawning/menu wiring, not chase-camera continuity), so not treated as a blocker for
+  this first cut — but noting it here as a known rough edge for a future pass if it
+  recurs or bothers players.
+
+- **Known gap, called out explicitly per the spec's non-goals:** the track does not
+  resize when `LW.size.set()` changes the planet's R — resizing will desync the rail
+  from the terrain. This was flagged as out of scope in the spec and is not fixed here.
+
 ## 2026-09-24 — Ride menu: vehicle cycling via arrow keys (Sandbox UI polish)
 
 - **What shipped:** replaced four separate ride buttons (Ride a plane / Ride a car / Ride a boat / Visit space) with one "Ride" button that opens a submenu (Plane / Car / Boat / Space). While riding (any mode except orbit), ArrowRight and ArrowLeft cycle to the next/previous instance in the same category, wrapping at the ends. Arrow keys do not apply in orbit mode (orbit controls keep ArrowUp/Down for zoom and ArrowLeft/Right for rotation) or during an active game (KEYMAP owns the arrows for flight).

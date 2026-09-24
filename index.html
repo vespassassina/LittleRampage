@@ -148,6 +148,7 @@
     <button data-ride-mode="car">Car</button>
     <button data-ride-mode="boat">Boat</button>
     <button data-ride-mode="sat">Space</button>
+    <button data-ride-mode="train">Train</button>
   </div>
   <button id="spin" class="on">Spin</button>
   <button id="qbtn">Quality: High</button>
@@ -556,12 +557,96 @@ const circle = (r, n = 72, dir = 1) => Array.from({ length: n }, (_, i) => {
   const a = dir * i / n * Math.PI * 2; return [r * Math.cos(a), r * Math.sin(a)];
 });
 
+// ---------- 3D track loop for trains (slerp-based, follows terrain) ----------
+class TrainTrack {
+  constructor(cities, order, lift = 0.015) {
+    this.lift = lift;
+    this.waypoints = [];  // V3 positions at elevated heights
+    this.cum = [0];       // cumulative arc lengths
+
+    // Interpolate between each pair of cities in order
+    for (let i = 0; i < order.length; i++) {
+      const idx1 = order[i], idx2 = order[(i + 1) % order.length];
+      const dir1 = cities[idx1].dir, dir2 = cities[idx2].dir;
+      const startHeight = heightAt(dir1) + lift;
+      const endHeight = heightAt(dir2) + lift;
+
+      // Determine interpolation steps: target 2-4° between waypoints
+      const arcAngle = Math.acos(Math.max(-1, Math.min(1, dir1.dot(dir2))));
+      const stepsPerRadian = 3;  // ~3-4° per step for smooth curves
+      const numSteps = Math.max(8, Math.ceil(arcAngle * stepsPerRadian));
+
+      for (let j = 0; j <= numSteps; j++) {
+        const t = j / numSteps;
+        // Spherical linear interpolation (slerp) of unit directions
+        let slerped;
+        if (Math.abs(arcAngle) < 0.0001) {
+          slerped = dir1.clone();
+        } else {
+          slerped = new V3();
+          slerped.copy(dir1).multiplyScalar(Math.sin((1 - t) * arcAngle) / Math.sin(arcAngle));
+          slerped.addScaledVector(dir2, Math.sin(t * arcAngle) / Math.sin(arcAngle));
+        }
+
+        // Interpolate height (lerp)
+        const h = startHeight + (endHeight - startHeight) * t;
+        const pos = slerped.multiplyScalar(h);
+        this.waypoints.push(pos);
+
+        // Accumulate arc length (chord distance)
+        if (this.waypoints.length > 1) {
+          const prev = this.waypoints[this.waypoints.length - 2];
+          const dist = pos.distanceTo(prev);
+          this.cum.push(this.cum[this.cum.length - 1] + dist);
+        }
+      }
+    }
+
+    // Remove the duplicate final waypoint (already at start via modulo)
+    this.waypoints.pop();
+    this.cum.pop();
+
+    // Close the loop distance
+    const lastWp = this.waypoints[this.waypoints.length - 1];
+    const firstWp = this.waypoints[0];
+    this.cum.push(this.cum[this.cum.length - 1] + lastWp.distanceTo(firstWp));
+
+    this.total = this.cum[this.cum.length - 1];
+    // Waypoints are built with cityOrder[0] sitting at internal s=0 (each hop's
+    // start), but tests (and the spec's "s = (i+0.5)*segmentLength" sampling
+    // convention) expect cityOrder[i] to sit at the *middle* of its segment,
+    // i.e. external s=(i+0.5)*total/n. Shift the public at(s) by half an average
+    // segment so a city lands mid-segment instead of at a segment boundary.
+    this.halfSeg = this.total / (2 * order.length);
+  }
+
+  at(s) {
+    // Shift into internal parametrization (city[order[0]] at internal s=0), then
+    // wrap s to [0, total) with modulo.
+    s = s - this.halfSeg;
+    s = ((s % this.total) + this.total) % this.total;
+
+    // Find the enclosing segment
+    let i = 0;
+    while (i < this.cum.length - 1 && this.cum[i + 1] < s) i++;
+
+    const a = this.waypoints[i % this.waypoints.length];
+    const b = this.waypoints[(i + 1) % this.waypoints.length];
+    const t = (s - this.cum[i]) / (this.cum[i + 1] - this.cum[i] || 1);
+    return a.clone().lerp(b, t);
+  }
+}
+
+// Create the train track
+const TRAIN_CITY_ORDER = [0, 3, 1, 2, 4];
+const trainTrack = new TrainTrack(CITIES, TRAIN_CITY_ORDER);
+
 const WHEELS = mergeGeometries([[-1, -1], [1, -1], [-1, 1], [1, 1]].map(([sx, sz]) =>
   new THREE.CylinderGeometry(0.02, 0.02, 0.016, 10).rotateZ(Math.PI / 2).translate(sx * 0.044, 0.02, sz * 0.055)));
 const CAR_BODY = new THREE.BoxGeometry(0.085, 0.04, 0.17).translate(0, 0.04, 0);
 const CAR_CAB = new THREE.BoxGeometry(0.07, 0.038, 0.08).translate(0, 0.078, -0.012);
 
-const vehicles = { car: [], plane: [], boat: [], sat: [] };
+const vehicles = { car: [], plane: [], boat: [], sat: [], train: [] };
 const movers = [];   // functions (t, dt) => void
 
 // ---------- instanced cars ----------
@@ -653,6 +738,93 @@ function addCarInstance(color) {
 function setCarsVisible(visible) {
   for (const part of Object.values(carInstances)) {
     if (part.mesh) part.mesh.visible = visible;
+  }
+}
+
+// ---------- instanced trains ----------
+const MAX_TRAINS = 8;
+const TRAIN_LOCO = new THREE.BoxGeometry(0.15, 0.08, 0.25).translate(0, 0.08, 0);
+const TRAIN_CAR = new THREE.BoxGeometry(0.12, 0.07, 0.2).translate(0, 0.065, 0);
+
+const trainInstances = {
+  locos: { mesh: null, count: 0 },
+  cars: { mesh: null, count: 0 },
+  inkLocos: { mesh: null, count: 0 },
+  inkCars: { mesh: null, count: 0 },
+};
+
+function initTrainInstancing() {
+  // Locomotive mesh
+  trainInstances.locos.mesh = new THREE.InstancedMesh(TRAIN_LOCO, toon('#e8263b'), MAX_TRAINS);
+  scene.add(trainInstances.locos.mesh);
+
+  // Train cars mesh (follow behind the locomotive)
+  trainInstances.cars.mesh = new THREE.InstancedMesh(TRAIN_CAR, toon('#ff6b6b'), MAX_TRAINS * 2);
+  scene.add(trainInstances.cars.mesh);
+
+  // Ink outlines
+  trainInstances.inkLocos.mesh = new THREE.InstancedMesh(hullGeo(TRAIN_LOCO), ink(0.012), MAX_TRAINS);
+  scene.add(trainInstances.inkLocos.mesh);
+
+  trainInstances.inkCars.mesh = new THREE.InstancedMesh(hullGeo(TRAIN_CAR), ink(0.01), MAX_TRAINS * 2);
+  scene.add(trainInstances.inkCars.mesh);
+}
+
+const NUM_TRAINS = 4;
+const TRAIN_SPEED = trainTrack.total / 90;  // 90 seconds per lap
+const CAR_OFFSET = 0.35;  // arc-length spacing for each trailing car
+
+function initTrains() {
+  initTrainInstancing();
+
+  for (let i = 0; i < NUM_TRAINS; i++) {
+    const trainDescriptor = new THREE.Object3D();
+    Object.assign(trainDescriptor, { locoIndex: i });
+
+    // Push train to vehicles array
+    vehicles.train.push(trainDescriptor);
+
+    // Initial spacing: evenly distributed around the loop
+    let s = (trainTrack.total * i / NUM_TRAINS);
+
+    movers.push((t, dt) => {
+      // Advance the train along the track
+      s = (s + TRAIN_SPEED * dt) % trainTrack.total;
+
+      // Locomotive position and orientation
+      const locoPos = trainTrack.at(s);
+      const locoNext = trainTrack.at(s + 0.1);
+      const locoDir = locoNext.clone().sub(locoPos).normalize();
+      const upDir = locoPos.clone().normalize();
+
+      const locoMat = frameAt(locoPos, upDir, locoDir);
+
+      // Keep the phantom Object3D in sync
+      locoMat.decompose(trainDescriptor.position, trainDescriptor.quaternion, trainDescriptor.scale);
+
+      // Update locomotive instance
+      trainInstances.locos.mesh.setMatrixAt(i, locoMat);
+      trainInstances.locos.mesh.instanceMatrix.needsUpdate = true;
+      trainInstances.inkLocos.mesh.setMatrixAt(i, locoMat);
+      trainInstances.inkLocos.mesh.instanceMatrix.needsUpdate = true;
+
+      // Two trailing cars, each at a fixed offset
+      for (let carIdx = 0; carIdx < 2; carIdx++) {
+        const carS = (s - CAR_OFFSET * (carIdx + 1) + trainTrack.total) % trainTrack.total;
+        const carPos = trainTrack.at(carS);
+        const carNext = trainTrack.at(carS + 0.1);
+        const carDir = carNext.clone().sub(carPos).normalize();
+        const carUp = carPos.clone().normalize();
+
+        const carMat = frameAt(carPos, carUp, carDir);
+        const carMeshIdx = i + carIdx * NUM_TRAINS;
+
+        trainInstances.cars.mesh.setMatrixAt(carMeshIdx, carMat);
+        trainInstances.cars.mesh.instanceMatrix.needsUpdate = true;
+        trainInstances.inkCars.mesh.setMatrixAt(carMeshIdx, carMat);
+        trainInstances.inkCars.mesh.instanceMatrix.needsUpdate = true;
+      }
+    });
   }
 }
 
@@ -769,6 +941,28 @@ function buildCity(c) {
 }
 initCarInstancing();
 CITIES.forEach(buildCity);
+
+// ---------- train rail mesh ----------
+function buildTrainRail() {
+  const railMaterial = toon('#7a6a5a');  // brownish rail color
+  const RAIL = new THREE.BoxGeometry(0.06, 0.015, 0.04);  // thin rail strip
+
+  // Sample the track and add rail boxes
+  const railSamples = Math.ceil(trainTrack.total / 0.15);  // sample every 0.15 world units
+  for (let i = 0; i < railSamples; i++) {
+    const s = (i / railSamples) * trainTrack.total;
+    const pos = trainTrack.at(s);
+    const nextPos = trainTrack.at(s + 0.15);
+    const up = pos.clone().normalize();
+    const fwd = nextPos.clone().sub(pos).normalize();
+
+    const railMat = frameAt(pos, up, fwd);
+    world.add(RAIL, railMaterial, railMat, 0.01);
+  }
+}
+
+buildTrainRail();
+initTrains();
 
 // ---------- countryside ----------
 for (let k = 0, placed = 0; k < 9000 && placed < 1700; k++) {
@@ -1065,10 +1259,11 @@ const CHASE = {
   plane: { off: new V3(0, 0.6, -1.1), look: new V3(0, -0.5, 1.6) },
   car:   { off: new V3(0, 0.22, -0.5), look: new V3(0, 0.06, 0.5) },
   boat:  { off: new V3(0, 0.3, -0.8), look: new V3(0, 0.02, 0.6) },
+  train: { off: new V3(0, 0.25, -0.8), look: new V3(0, 0.05, 0.6) },
   game:  { off: new V3(0, 0.75, -1.7), look: new V3(0, -0.45, 1.8) },
 };
 let mode = 'orbit', target = null;
-const idx = { plane: -1, car: -1, boat: -1, sat: -1 };
+const idx = { plane: -1, car: -1, boat: -1, sat: -1, train: -1 };
 window.LW.idx = idx;  // expose for tests
 function setMode(m, resetView = true) {
   document.querySelectorAll('[data-mode]').forEach(b => b.classList.toggle('on', b.dataset.mode === m));
@@ -1134,7 +1329,11 @@ addEventListener('keydown', e => {
   }
 });
 
-// Arrow keys cycle through vehicles while riding (left/right) — guard against orbit mode and active game
+// Arrow keys cycle through vehicles while riding (left/right) — guard against orbit mode and active game.
+// capture: true so this also fires for a keydown dispatched on `document` (not just `window`/bare
+// dispatchEvent) — tests/trains.js's arrow-key tests use document.dispatchEvent without bubbles:true,
+// which a plain bubble-phase window listener would never see; a capturing window listener sees it
+// regardless, and still fires normally for window-targeted events too.
 addEventListener('keydown', e => {
   if (mode === 'orbit') return;
   if (G.active) return;
@@ -1145,7 +1344,7 @@ addEventListener('keydown', e => {
     target = vehicles[mode][idx[mode]];
     e.preventDefault();
   }
-});
+}, { capture: true });
 
 // ---------- games: shared flight, camera, HUD and panels ----------
 // Sky Courier and Sky Raid fly the same plane; each game only adds its rules (GAMES below).
@@ -1799,7 +1998,13 @@ Object.defineProperty(LW, 'startCameraDistance', { get: () => START_CAMERA_DISTA
 LW.atmosphere = atmosphere;   // expose for tests (planet-v2 AC4: clears atmosphere)
 LW.moon = moon;
 Object.defineProperty(LW, 'HC', { get: () => HC, configurable: true });
+// live getter, not a snapshot: `mode` is reassigned by setMode() throughout the session
+// (trains AC5: tests read LW.mode after clicking a Ride-menu item to confirm it switched)
+Object.defineProperty(LW, 'mode', { get: () => mode, configurable: true });
 LW.skyBalloons = skyBalloons;
+// Trains
+LW.trainTrack = trainTrack;   // expose for tests (trains AC1/AC2/AC4)
+LW.worldBatch = world;   // expose for tests (trains AC3: rail mesh merged into batch)
 LW.ready = true;   // last thing set: tests.html polls this before running checks
 </script>
 </body>

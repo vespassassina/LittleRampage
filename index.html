@@ -148,6 +148,9 @@
   <button data-mode="sat">Visit space</button>
   <button id="spin" class="on">Spin</button>
   <button id="qbtn">Quality: High</button>
+  <button data-size="small" id="sbtn-small">Small</button>
+  <button data-size="mid" id="sbtn-mid" class="on">Mid</button>
+  <button data-size="large" id="sbtn-large">Large</button>
 </div>
 
 <script type="module">
@@ -160,17 +163,18 @@ const TEST_MODE = new URLSearchParams(location.search).has('test');
 
 const V3 = THREE.Vector3;
 const UP = new V3(0, 1, 0);
-const R = 15;             // planet radius (sea level) — planet-v2 AC1, was 10
-const HC = R + 0.32;      // height of city plateaus (absolute; not scaled with R)
+let R = 15;             // planet radius (sea level) — planet-v2 AC1, was 10
+let HC = R + 0.32;      // height of city plateaus (absolute; not scaled with R)
 // Terrain noise is sampled from unit-ish direction vectors, so its wavelength in
 // world units grows with R unless frequency grows to match (arc length = angle * R;
 // angle per noise-cycle ~ 1/frequency, so frequency must scale with R to hold the
 // arc length, i.e. a mountain's width in world units, constant). NZ is that scale
 // factor, anchored to the original R=10 tuning.
-const NZ = R / 10;
+let NZ = R / 10;
 
 // ---------- helpers ----------
-let seed = 20260923;
+const INITIAL_SEED = 20260923;
+let seed = INITIAL_SEED;
 const rand = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
 const rr = (a, b) => a + (b - a) * rand();
 const pick = a => a[Math.floor(rand() * a.length)];
@@ -281,8 +285,8 @@ const camera = new THREE.PerspectiveCamera(45, innerWidth / innerHeight, 0.05, 1
 camera.position.copy(CITIES[0].dir).multiplyScalar(3 * R).add(new V3(4, 6, 8));
 if (camera.aspect < 1) camera.position.multiplyScalar(0.8 / camera.aspect);   // fit the planet on a portrait phone
 scene.add(camera);
-const START_CAMERA_DISTANCE = camera.position.length();   // frozen for tests (AC3): camera.position itself gets driven around by later tests
-const START_CAMERA_POSITION = camera.position.clone();   // reused by the Orbit button to reset the view (Sandbox UI polish)
+let START_CAMERA_DISTANCE = camera.position.length();   // frozen for tests (AC3): camera.position itself gets driven around by later tests
+let START_CAMERA_POSITION = camera.position.clone();   // reused by the Orbit button to reset the view (Sandbox UI polish)
 
 scene.add(new THREE.AmbientLight('#bdb6ff', 1.0));
 const sun = new THREE.DirectionalLight('#fff4dc', 2.3);
@@ -379,8 +383,13 @@ class Batch {
 const PALETTE = ['#ff6b6b', '#ffd93d', '#6bcbef', '#a66cff', '#ff9f43', '#4ecdc4', '#f78fb3', '#9be15d', '#ff7eb6', '#5ab0ff'];
 const GREENS = ['#5ccf5a', '#3fb35a', '#86dc4e', '#2f9e5b'];
 
-// ---------- terrain and sea ----------
-{
+// ---------- terrain and sea (regeneratable) ----------
+let terrain, sea;
+function generateTerrainAndSea() {
+  // Remove old terrain and sea if they exist
+  if (terrain) scene.remove(terrain);
+  if (sea) scene.remove(sea);
+
   let g = new THREE.IcosahedronGeometry(1, 90);
   g.deleteAttribute('normal'); g.deleteAttribute('uv');
   g = mergeVertices(g);
@@ -400,16 +409,17 @@ const GREENS = ['#5ccf5a', '#3fb35a', '#86dc4e', '#2f9e5b'];
   }
   g.setAttribute('color', new THREE.BufferAttribute(cols, 3));
   g.computeVertexNormals();
-  const terrain = new THREE.Mesh(g, new THREE.MeshToonMaterial({ vertexColors: true, gradientMap: RAMP }));
+  terrain = new THREE.Mesh(g, new THREE.MeshToonMaterial({ vertexColors: true, gradientMap: RAMP }));
   terrain.add(new THREE.Mesh(g, ink(0.08)));
   scene.add(terrain);
 
   const seaGeo = new THREE.SphereGeometry(R, 128, 96);
-  const sea = new THREE.Mesh(seaGeo, new THREE.MeshToonMaterial({
+  sea = new THREE.Mesh(seaGeo, new THREE.MeshToonMaterial({
     color: '#3cb0f0', gradientMap: RAMP, transparent: true, opacity: 0.84 }));
   sea.add(new THREE.Mesh(seaGeo, ink(0.08)));
   scene.add(sea);
 }
+generateTerrainAndSea();
 
 // Stepped comic halo.
 const atmosphere = new THREE.Mesh(
@@ -1581,6 +1591,113 @@ LW.quality = {
 if (qbtn) qbtn.onclick = () => LW.quality.set(LW.quality.get() === 'low' ? 'high' : 'low');
 applyQuality(qualityLevel);
 
+// ---------- planet size selector ----------
+const SIZE_KEY = 'lw-size';
+const SIZE_CONFIGS = {
+  small: { R: 10 },
+  mid: { R: 15 },
+  large: { R: 20 }
+};
+
+function getRConfigForSize(size) {
+  const sizeR = SIZE_CONFIGS[size].R;
+  return {
+    R: sizeR,
+    NZ: sizeR / 10,
+    HC: sizeR + 0.32,
+    minDistance: sizeR + 0.9,
+    maxDistance: 8 * sizeR,
+    startCameraDistance: 3 * sizeR,
+    atmosphere: sizeR * 1.2,
+    moon: sizeR * 2.6,
+  };
+}
+
+function loadSize() {
+  try {
+    const v = localStorage.getItem(SIZE_KEY);
+    return (v === 'small' || v === 'mid' || v === 'large') ? v : 'mid';
+  } catch { return 'mid'; }
+}
+
+let currentSize = loadSize();
+
+function applySize(size) {
+  currentSize = size;
+  const cfg = getRConfigForSize(size);
+
+  // Update R, NZ, HC
+  R = cfg.R;
+  NZ = cfg.NZ;
+  HC = cfg.HC;
+
+  // Regenerate terrain and sea
+  generateTerrainAndSea();
+
+  // Update atmosphere
+  atmosphere.geometry = new THREE.SphereGeometry(cfg.atmosphere, 64, 48);
+
+  // Update moon position (it's inside the pivot, which is at origin, so we update moon.position)
+  moon.position.x = cfg.moon;
+
+  // Update camera clamps
+  controls.minDistance = cfg.minDistance;
+  controls.maxDistance = cfg.maxDistance;
+
+  // Clamp current camera distance if it's outside the new limits
+  const dist = camera.position.length();
+  if (dist < cfg.minDistance) {
+    const dir = camera.position.clone().normalize();
+    camera.position.copy(dir.multiplyScalar(cfg.minDistance));
+  } else if (dist > cfg.maxDistance) {
+    const dir = camera.position.clone().normalize();
+    camera.position.copy(dir.multiplyScalar(cfg.maxDistance));
+  }
+
+  // Update the start camera distance and position (frozen values for testing)
+  START_CAMERA_DISTANCE = cfg.startCameraDistance;
+  START_CAMERA_POSITION = CITIES[0].dir.clone().multiplyScalar(cfg.startCameraDistance).add(new V3(4, 6, 8));
+
+  // Update UI buttons to reflect current size
+  updateSizeButtons();
+
+  // Persist to localStorage
+  try { localStorage.setItem(SIZE_KEY, size); } catch { /* storage blocked */ }
+}
+
+LW.size = {
+  sizes: { small: 10, mid: 15, large: 20 },
+  get: () => currentSize,
+  set(size) {
+    applySize(size);
+  },
+  getRConfig(size) {
+    return getRConfigForSize(size);
+  },
+  currentConfig() {
+    return getRConfigForSize(currentSize);
+  },
+};
+
+// Wire up size buttons
+const sbtnSmall = $('sbtn-small');
+const sbtnMid = $('sbtn-mid');
+const sbtnLarge = $('sbtn-large');
+function updateSizeButtons() {
+  if (sbtnSmall) { sbtnSmall.classList.toggle('on', currentSize === 'small'); }
+  if (sbtnMid) { sbtnMid.classList.toggle('on', currentSize === 'mid'); }
+  if (sbtnLarge) { sbtnLarge.classList.toggle('on', currentSize === 'large'); }
+}
+if (sbtnSmall) sbtnSmall.onclick = () => LW.size.set('small');
+if (sbtnMid) sbtnMid.onclick = () => LW.size.set('mid');
+if (sbtnLarge) sbtnLarge.onclick = () => LW.size.set('large');
+updateSizeButtons();
+
+// Apply the loaded size if it's not the default
+if (currentSize !== 'mid') {
+  applySize(currentSize);
+}
+
 // ---------- loop ----------
 const clock = new THREE.Clock();
 const tmp = new V3(), tmp2 = new V3();
@@ -1634,6 +1751,7 @@ function frame(fixedDt) {
 // a flaky test rather than a clean failure or a clean pass.
 if (!TEST_MODE) renderer.setAnimationLoop(() => frame());
 LW.frame = frame;
+LW.renderer = renderer;  // expose for tests (quality.js: draw call counting)
 LW.R = R;               // expose for tests (planet-v2 AC1)
 LW.NZ = NZ;
 LW.rawHeight = rawHeight;

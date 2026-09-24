@@ -1654,9 +1654,12 @@ function applySize(size) {
     camera.position.copy(dir.multiplyScalar(cfg.maxDistance));
   }
 
-  // Update the start camera distance and position (frozen values for testing)
-  START_CAMERA_DISTANCE = cfg.startCameraDistance;
+  // Update the start camera distance and position (frozen values for testing).
+  // Distance must match the actual start position's length (which includes the
+  // fixed (4,6,8) offset added below), not the bare 3*R used to place it —
+  // otherwise a resize round-trip back to the same size drifts the distance.
   START_CAMERA_POSITION = CITIES[0].dir.clone().multiplyScalar(cfg.startCameraDistance).add(new V3(4, 6, 8));
+  START_CAMERA_DISTANCE = START_CAMERA_POSITION.length();
 
   // Update UI buttons to reflect current size
   updateSizeButtons();
@@ -1752,8 +1755,9 @@ function frame(fixedDt) {
 if (!TEST_MODE) renderer.setAnimationLoop(() => frame());
 LW.frame = frame;
 LW.renderer = renderer;  // expose for tests (quality.js: draw call counting)
-LW.R = R;               // expose for tests (planet-v2 AC1)
-LW.NZ = NZ;
+// Live getters, not snapshots: applySize() reassigns R/NZ when the planet is resized.
+Object.defineProperty(LW, 'R', { get: () => R, configurable: true });
+Object.defineProperty(LW, 'NZ', { get: () => NZ, configurable: true });
 LW.rawHeight = rawHeight;
 LW.grassNoise = grassNoise;   // expose for tests (planet-v2 AC1: meadows and forests keep their size)
 LW.forestNoise = forestNoise;
@@ -1762,10 +1766,10 @@ LW.CITIES = CITIES;
 LW.addCarInstance = addCarInstance;   // expose for tests
 LW.setCarsVisible = setCarsVisible;   // expose for tests: measure traffic's own draw-call cost
 LW.controls = controls;   // expose for tests (planet-v2 AC3: zoom limits)
-LW.startCameraDistance = START_CAMERA_DISTANCE;   // expose for tests (planet-v2 AC3: fits at start)
+Object.defineProperty(LW, 'startCameraDistance', { get: () => START_CAMERA_DISTANCE, configurable: true });   // expose for tests (planet-v2 AC3: fits at start)
 LW.atmosphere = atmosphere;   // expose for tests (planet-v2 AC4: clears atmosphere)
 LW.moon = moon;
-LW.HC = HC;
+Object.defineProperty(LW, 'HC', { get: () => HC, configurable: true });
 LW.skyBalloons = skyBalloons;
 LW.ready = true;   // last thing set: tests.html polls this before running checks
 </script>

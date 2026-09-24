@@ -99,7 +99,7 @@ Epics are grouped by game, not by order; the milestone tag on each sprint says w
 Raised 2026-09-23. Two quick fixes go straight to TDD now; the other two need a short
 spec/plan pass before building (real features, not one-liners).
 
-- [ ] Options menu: quality selector (existing) plus a planet-size selector (small/mid/large).
+- [x] Options menu: quality selector (existing) plus a planet-size selector (small/mid/large).
   Decision: sizes map to different R values (e.g. 10/15/20); switching resizes the current
   planet live, same seed — not a reroll. Reuses the R-scaling work from Sprint P1 (NZ,
   camera limits, orbit altitudes all already expressed in terms of R).

@@ -2,6 +2,40 @@
 
 Newest first.
 
+## 2026-09-24 — Planet-size selector (small/mid/large); fixed two bugs the builder agent pushed unverified
+
+- **What shipped:** an Options-menu size selector (small=R10 / mid=R15 / large=R20,
+  `LW.size.get/set/getRConfig/currentConfig`) that resizes the live planet on the same
+  seed — terrain, sea, camera clamps, atmosphere and moon all recompute from the new R;
+  the choice persists to `localStorage` like the quality selector. `NZ = R/10`,
+  `HC = R + 0.32`, `minDistance = R + 0.9`, `maxDistance = 8*R`, matching the P1 R-scaling
+  conventions already in the code.
+- **Process failure:** the building agent (a `tester`) committed and pushed this straight
+  to `origin/main` (`7fa9507`) while its own final report said it *could not run a real
+  browser* and asked the coordinator to verify first. That's a direct violation of this
+  project's "never report green you didn't see" rule — committing should have waited for
+  verification, not preceded it. The coordinator verified live immediately after and found
+  the push was in fact broken (below), confirming why that rule exists.
+- **Bug 1 — `LW.R`/`LW.NZ`/`LW.HC`/`LW.startCameraDistance` were snapshots, not live:**
+  each was assigned once (`LW.R = R`) when the app booted, so `LW.size.set()` reassigning
+  the module-scoped `R`/`NZ`/`HC`/`START_CAMERA_DISTANCE` variables never showed up on
+  `LW.*`. Tests reading `LW.R` after a resize saw the stale original value (`set('small')`
+  reported `R` still `15`). Fixed by exposing these as live getters
+  (`Object.defineProperty(LW, 'R', { get: () => R })`, same for `NZ`/`HC`/
+  `startCameraDistance`) instead of one-time value copies.
+- **Bug 2 — start-camera distance drifted on a resize round-trip:** the start camera
+  position is `CITIES[0].dir * 3R + (4,6,8)` (a fixed offset breaks the "always face the
+  first city, camera slightly off-axis" framing) — its length is *not* exactly `3R`.
+  `applySize()` set `START_CAMERA_DISTANCE = 3 * R` directly instead of measuring the
+  actual start-position vector, so resizing to large and back to mid landed the camera at
+  the right position but a mismatched "start distance" (45.05 expected, got 45.00 — an
+  existing AC3-era test caught this via the Orbit-button reset check). Fixed by computing
+  `START_CAMERA_POSITION` first and setting `START_CAMERA_DISTANCE = START_CAMERA_POSITION.length()`.
+- Verified 83/83 passing in a real browser (`tests.html`, hard-reloaded), two consecutive
+  runs, plus a manual round-trip (`LW.size.set('large')` then `set('mid')`) confirming R,
+  NZ, HC, camera clamps and start distance all return to their exact original values.
+  New tests in `tests/planet-size.js`.
+
 ## 2026-09-23 — Idle spin only stops on a drag; new arrow-key zoom/orbit in sandbox view
 
 - **Root cause of scroll-to-zoom killing the idle spin:** OrbitControls' `onMouseWheel`

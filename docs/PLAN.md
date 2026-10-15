@@ -84,9 +84,9 @@ Epics are grouped by game, not by order; the milestone tag on each sprint says w
 - [x] Jets strafe with missiles (AC 7)
 - [x] End screen, best score (AC 8)
 
-### Sprint K4: a roster of monsters
-- [ ] Bonkers and Shellback with their traits; Random with variations (AC 1, 7, 10)
-- [ ] Balance pass and frame-cost check at heat 4 (AC 10)
+### Sprint K4: a roster of monsters (done 2026-10-15)
+- [x] Bonkers and Shellback with their traits; Random with variations (AC 1, 7, 10)
+- [x] Balance pass and frame-cost check at heat 4 (AC 10): CPU side only, real-GPU check left to the final sprint
 
 ## Epic: Sandbox UI polish — backlog, not yet scheduled into a milestone
 

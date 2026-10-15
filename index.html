@@ -59,6 +59,8 @@
   .bar { width: 90px; height: 16px; border: 3px solid #000; border-radius: 8px; background: #ddd; overflow: hidden; display: inline-block; }
   .bar i { display: block; height: 100%; background: #e8263b; }
   #h-en { background: #ffd93d; }
+  #k-pick { display: flex; gap: 6px; justify-content: center; flex-wrap: wrap; margin: 0 0 12px; }
+  #k-pick button.on { background: #ffd93d; }
   #play-kaiju { background: #5cc96b; color: #fff; -webkit-text-stroke: 1px #000; }
   #h-lives { color: #e8263b; }
   #play-raid { background: #5ab0ff; color: #fff; -webkit-text-stroke: 1px #000; }
@@ -157,6 +159,9 @@
 <div id="panel" hidden>
   <h2 id="p-title"></h2>
   <p id="p-text"></p>
+  <div id="k-pick" hidden>
+    <button data-k="scalezor" class="on">Scalezor</button><button data-k="bonkers">Bonkers</button><button data-k="shellback">Shellback</button><button data-k="random">Random</button>
+  </div>
   <div class="row"><button id="p-go"></button><button id="p-back">Back to sandbox</button></div>
 </div>
 <div id="touch" hidden>
@@ -1584,6 +1589,7 @@ function openGame(kind) {
   $('ui').hidden = true; $('game-buttons').hidden = true; document.querySelector('h1').hidden = true;
   hud.el.hidden = true; hud.el.dataset.game = kind;
   panel(rules.title, rules.intro, 'Start!');
+  $('k-pick').hidden = kind !== 'kaiju';
   updateTouchVisibility();
 }
 function startRun() {
@@ -1591,14 +1597,14 @@ function startRun() {
   G.score = 0; G.keys.clear();
   document.activeElement?.blur();   // or Space would press the button that had focus
   rules.start();
-  hud.el.hidden = false; $('panel').hidden = true;
+  hud.el.hidden = false; $('panel').hidden = true; $('k-pick').hidden = true;
   G.running = true;
   updateTouchVisibility();
 }
 function quitGame() {
   G.active = G.running = false; G.keys.clear();
   rules.stop();
-  player.visible = false;
+  player.visible = false; $('k-pick').hidden = true;
   hud.el.hidden = true; $('panel').hidden = true; $('ui').hidden = false; $('game-buttons').hidden = false; document.querySelector('h1').hidden = false;
   setMode('orbit', false);   // return to sandbox, but don't snap the camera the user wasn't touching
   updateTouchVisibility();
@@ -1607,6 +1613,12 @@ $('play').onclick = () => openGame('courier');
 $('play-raid').onclick = () => openGame('raid');
 $('play-kaiju').onclick = () => openGame('kaiju');
 $('p-go').onclick = startRun;
+$('k-pick').onclick = e => {
+  const k = e.target.dataset?.k;
+  if (!k) return;
+  chosenKaiju = k;
+  for (const b of $('k-pick').children) b.classList.toggle('on', b.dataset.k === k);
+};
 $('p-back').onclick = quitGame;
 $('h-quit').onclick = quitGame;
 
@@ -2087,7 +2099,10 @@ GAMES.raid = {
 // things go through world.destroy()/restoreAll(), the same path Sky Raid's bombs use.
 const KAIJU = {
   scalezor: { name: 'Scalezor', speed: 1.0, health: 100, swipe: { reach: 1.0, half: 1.2, dir: -1 } },   // tail: wide arc behind
+  bonkers: { name: 'Bonkers', speed: 1.3, health: 75, eatGap: 0.25, swipe: { reach: 1.2, half: 0.5, dir: 1 } },   // fists: long, narrow, ahead
+  shellback: { name: 'Shellback', speed: 0.7, health: 150, tankDamage: 0.5, swipe: { reach: 1.0, half: Math.PI, dir: 1 } },   // shell spin: all around
 };
+const ROSTER = Object.keys(KAIJU);
 const WALK = 0.7, KAIJU_TURN = 1.4, STOMP_AT = 0.5, STOMP_R = 0.5, SHALLOW = 0.3, LOW_PLANE = 1.5;
 const STOMP_GAP = 0.4, SWIPE_GAP = 0.6, KAIJU_BURSTS = 3;
 const COST = { stomp: 5, swipe: 10, roar: 15 }, ROAR_COOLDOWN = 10, ROAR_QUIET = 3, ROAR_FEAR = 5, STARVING = 2;
@@ -2095,35 +2110,79 @@ const EAT_REACH = 1.0, EAT_GAP = 0.5, EAT_GAINS = { person: 3, car: 8, tank: 15,
 const PEOPLE_PER_CITY = 24, PERSON_WALK = 0.15, PERSON_FLEE = 0.8, PERSON_PANIC = 1.1, FLEE_R = 2.2, PERSON_RESPAWN = 30;
 const SMASH = { house: 5, tree: 1, car: 5, plane: 40 };
 
-// Scalezor: green lizard, orange back plates. +Z is forward, the tail trails behind.
-function makeScalezor() {
-  const g = new THREE.Group(), body = toon('#5cc96b'), belly = toon('#d6f5a8'), plate = toon('#ff9f43');
+// Three bodies, each built once. +Z is forward. A run only recolours, resizes (±10%) and hides
+// some spikes (see dress), so nothing is allocated per run. Feet are at y = 0.
+function makeKaiju(build) {
+  const g = new THREE.Group(), own = () => new THREE.MeshToonMaterial({ color: '#ffffff', gradientMap: RAMP }),   // not toon(): that cache is shared
+    mats = { body: own(), belly: own(), plate: own(), eye: toon('#ffffff') };
   const part = (geo, mat, x, y, z, w = 0.03) => { const m = inked(geo, mat, w); m.position.set(x, y, z); g.add(m); return m; };
-  const legs = [-0.24, 0.24].map(x => {
-    const pivot = new THREE.Group(); pivot.position.set(x, 0.75, 0); g.add(pivot);
-    const leg = inked(new THREE.BoxGeometry(0.3, 0.75, 0.34).translate(0, -0.375, 0), body, 0.03); pivot.add(leg);
-    const foot = inked(new THREE.BoxGeometry(0.34, 0.1, 0.5).translate(0, -0.7, 0.08), plate, 0.02); pivot.add(foot);
+  const leg = (x, y, w, h, d) => {   // a leg that swings from the hip, with a foot in the plate colour
+    const pivot = new THREE.Group(); pivot.position.set(x, y, 0); g.add(pivot);
+    pivot.add(inked(new THREE.BoxGeometry(w, h, d).translate(0, -h / 2, 0), mats.body, 0.03));
+    pivot.add(inked(new THREE.BoxGeometry(w + 0.04, 0.1, d + 0.16).translate(0, -h + 0.05, 0.08), mats.plate, 0.02));
     return pivot;
-  });
-  part(new THREE.BoxGeometry(0.85, 0.85, 1.15), body, 0, 1.2, 0);
-  part(new THREE.BoxGeometry(0.6, 0.5, 0.9), belly, 0, 1.05, 0.12, 0.02);
-  const head = part(new THREE.BoxGeometry(0.55, 0.5, 0.55), body, 0, 1.55, 0.75);
-  part(new THREE.BoxGeometry(0.4, 0.22, 0.45), body, 0, 1.45, 1.1, 0.02);
-  part(new THREE.BoxGeometry(0.1, 0.1, 0.06), toon('#ffffff'), -0.18, 1.7, 1.02, 0.01);
-  part(new THREE.BoxGeometry(0.1, 0.1, 0.06), toon('#ffffff'), 0.18, 1.7, 1.02, 0.01);
-  for (let i = 0; i < 5; i++) part(new THREE.ConeGeometry(0.17 - i * 0.015, 0.34, 4), plate, 0, 1.82 - i * 0.04, 0.45 - i * 0.28, 0.02);
-  const tail = [];
-  for (let i = 0; i < 3; i++) {
-    const w = 0.55 - i * 0.15;
-    tail.push(part(new THREE.BoxGeometry(w, w, 0.6), body, 0, 1.0 - i * 0.12, -0.85 - i * 0.55));
-  }
-  part(new THREE.ConeGeometry(0.16, 0.4, 4).rotateX(-Math.PI / 2), plate, 0, 0.78, -2.6, 0.02);
-  g.userData.legs = legs; g.userData.tail = tail; g.userData.head = head;
-  g.userData.chase = { off: new V3(0, 3.8, -5.5), look: new V3(0, 1, 1.5) };   // behind and above, looking past the head
-  g.visible = false; scene.add(g);
+  };
+  const eyes = (y, z) => [-0.18, 0.18].forEach(x => part(new THREE.BoxGeometry(0.1, 0.1, 0.06), mats.eye, x, y, z, 0.01));
+  g.userData = { mats, ...build({ part, leg, eyes, mats }) };
+  g.userData.plates.forEach(m => { m.userData.spike = true; });
+  g.visible = false;
   return g;
 }
-const kaijuMesh = makeScalezor();
+const MODELS = {
+  scalezor: makeKaiju(({ part, leg, eyes, mats }) => {   // lizard, tail trailing behind
+    const legs = [leg(-0.24, 0.75, 0.3, 0.75, 0.34), leg(0.24, 0.75, 0.3, 0.75, 0.34)];
+    part(new THREE.BoxGeometry(0.85, 0.85, 1.15), mats.body, 0, 1.2, 0);
+    part(new THREE.BoxGeometry(0.6, 0.5, 0.9), mats.belly, 0, 1.05, 0.12, 0.02);
+    part(new THREE.BoxGeometry(0.55, 0.5, 0.55), mats.body, 0, 1.55, 0.75);
+    part(new THREE.BoxGeometry(0.4, 0.22, 0.45), mats.body, 0, 1.45, 1.1, 0.02);
+    eyes(1.7, 1.02);
+    const plates = [];
+    for (let i = 0; i < 5; i++) plates.push(part(new THREE.ConeGeometry(0.17 - i * 0.015, 0.34, 4), mats.plate, 0, 1.82 - i * 0.04, 0.45 - i * 0.28, 0.02));
+    for (let i = 0; i < 3; i++) { const w = 0.55 - i * 0.15; part(new THREE.BoxGeometry(w, w, 0.6), mats.body, 0, 1.0 - i * 0.12, -0.85 - i * 0.55); }
+    part(new THREE.ConeGeometry(0.16, 0.4, 4).rotateX(-Math.PI / 2), mats.plate, 0, 0.78, -2.6, 0.02);
+    return { legs, plates, chase: { off: new V3(0, 3.8, -5.5), look: new V3(0, 1, 1.5) } };   // behind and above, looking past the head
+  }),
+  bonkers: makeKaiju(({ part, leg, eyes, mats }) => {   // ape: huge arms, small head, tufts
+    const legs = [leg(-0.26, 0.6, 0.36, 0.6, 0.36), leg(0.26, 0.6, 0.36, 0.6, 0.36)];
+    part(new THREE.BoxGeometry(1.1, 0.95, 0.8), mats.body, 0, 1.1, 0);
+    part(new THREE.BoxGeometry(0.7, 0.6, 0.2), mats.belly, 0, 1.05, 0.38, 0.02);
+    for (const x of [-0.72, 0.72]) {
+      part(new THREE.BoxGeometry(0.28, 1.0, 0.3), mats.body, x, 1.05, 0.1);
+      part(new THREE.BoxGeometry(0.36, 0.3, 0.36), mats.plate, x, 0.5, 0.15, 0.02);   // the fists
+    }
+    part(new THREE.BoxGeometry(0.55, 0.5, 0.5), mats.body, 0, 1.75, 0.3);
+    part(new THREE.BoxGeometry(0.36, 0.22, 0.2), mats.belly, 0, 1.68, 0.6, 0.02);
+    eyes(1.85, 0.57);
+    const plates = [];
+    for (let i = 0; i < 6; i++) plates.push(part(new THREE.ConeGeometry(0.07, 0.22, 4), mats.plate, -0.2 + i * 0.08, 2.06, 0.25 - (i % 2) * 0.12, 0.01));
+    return { legs, plates, chase: { off: new V3(0, 3.6, -5), look: new V3(0, 1, 1.5) } };
+  }),
+  shellback: makeKaiju(({ part, leg, eyes, mats }) => {   // turtle: low, wide, a spiky shell
+    const legs = [leg(-0.4, 0.45, 0.32, 0.45, 0.34), leg(0.4, 0.45, 0.32, 0.45, 0.34)];
+    part(new THREE.BoxGeometry(1.2, 0.3, 1.3), mats.belly, 0, 0.6, 0);
+    part(new THREE.SphereGeometry(0.85, 14, 8, 0, Math.PI * 2, 0, Math.PI / 2).scale(1, 0.9, 1.05), mats.plate, 0, 0.7, -0.05, 0.03);
+    part(new THREE.BoxGeometry(0.3, 0.4, 0.5), mats.body, 0, 0.9, 0.8);
+    part(new THREE.BoxGeometry(0.5, 0.45, 0.5), mats.body, 0, 1.0, 1.15);
+    eyes(1.12, 1.4);
+    part(new THREE.ConeGeometry(0.14, 0.4, 4).rotateX(-Math.PI / 2), mats.body, 0, 0.6, -1.05, 0.02);
+    const plates = [];
+    for (let i = 0; i < 7; i++) { const a = i / 7 * 6.283; plates.push(part(new THREE.ConeGeometry(0.1, 0.3, 4), mats.belly, Math.cos(a) * 0.45, 1.45 - Math.hypot(Math.cos(a), Math.sin(a)) * 0.05, Math.sin(a) * 0.45 - 0.05, 0.015)); }
+    return { legs, plates, chase: { off: new V3(0, 3.6, -5), look: new V3(0, 0.8, 1.5) } };
+  }),
+};
+const kaijuMesh = new THREE.Group();   // the holder: placed on the planet; the chosen body inside it shows
+kaijuMesh.visible = false; scene.add(kaijuMesh);
+for (const m of Object.values(MODELS)) kaijuMesh.add(m);
+let kaijuModel = MODELS.scalezor, chosenKaiju = 'scalezor', kaijuLook = { color: '', size: 1, spikes: 0 };
+// A new look for the run: colours from a random hue, size within 10%, between half and all the spikes.
+function dress(model) {
+  const hue = Math.random(), { mats, plates } = model.userData;
+  mats.body.color.setHSL(hue, 0.5, 0.55); mats.belly.color.setHSL(hue, 0.55, 0.82); mats.plate.color.setHSL((hue + 0.5) % 1, 0.9, 0.6);
+  const size = 0.9 + Math.random() * 0.2, spikes = plates.length - Math.floor(Math.random() * plates.length / 2);
+  model.scale.setScalar(size);
+  plates.forEach((m, i) => { m.visible = i < spikes; });
+  kaijuLook = { color: '#' + mats.body.color.getHexString(), size, spikes };
+}
 let kaijuRun = null, kaijuClock = 0, stompWait = 0, swipeWait = 0, eatWait = 0, roarWait = 0, gait = 0;
 let kHealth = 0, kEnergy = 0, armyQuiet = 0, roarFear = 0;
 // Energy pays for moves; with none left they are off. Returns whether the move happens.
@@ -2185,7 +2244,7 @@ function swipe() {
     if (dot < cosR) return false;
     _kv.copy(d).addScaledVector(G.p, -dot);
     const len = _kv.length();
-    return len < 1e-6 || _kv.dot(sf) / len >= Math.cos(half);
+    return half >= Math.PI || len < 1e-6 || _kv.dot(sf) / len >= Math.cos(half);
   };
   return smash(arc, false) + smash(arc, true);
 }
@@ -2261,6 +2320,7 @@ function roar() {
 function endKaiju() {
   G.running = false;
   recordBest();
+  $('k-pick').hidden = false;   // pick again for the next run
   panel('Flattened!', `Score ${G.score}. Heat ${maxHeat}. You lasted ${Math.round(kaijuClock)} s. Best ${GAMES.kaiju.best}.`, 'Play again');
 }
 function damage(n) {
@@ -2269,8 +2329,8 @@ function damage(n) {
 }
 // ---- the army: heat comes from the score. Police first, tanks from heat 2, jets from heat 3.
 // Everything is pooled: units and shots are made once and recycled.
-const POLICE = { speed: 0.9, hold: 1.8, range: 2.5, gap: 1.6, dmg: 0.5, shot: 3.0, color: '#ffe066' };
-const TANK = { speed: 0.5, hold: 2.8, range: 3.5, gap: 3.5, dmg: 3, shot: 2.5, color: '#ff9f1c' };
+const POLICE = { speed: 0.9, hold: 1.8, range: 2.5, gap: 2.2, dmg: 0.5, shot: 3.0, color: '#ffe066' };
+const TANK = { speed: 0.5, hold: 2.8, range: 3.5, gap: 5, dmg: 3, shot: 2.5, color: '#ff9f1c' };
 const JET = { speed: 1.8, range: 2.8, dmg: 5, shot: 3.5, color: '#ff3b3b', alt: 2.4 };
 const UNIT_POINTS = { police: 10, tank: 25 };
 const POOL = { police: 12, tank: 6, jet: 4 }, ARMY_FILL = 1.5, ARMY_RING = [3.5, 4.5], FAR = 7, HIT_CHEST = 0.7, CHEST = 0.9;
@@ -2351,7 +2411,7 @@ function stepArmy(dt) {
     const want = targets(h);
     for (const kind in want) if (units.filter(u => u.alive && u.kind === kind).length < want[kind]) spawnUnit(kind);
   }
-  const quiet = armyQuiet > 0, gapScale = 1 / (1 + 0.25 * (h - 1));
+  const quiet = armyQuiet > 0, gapScale = 1 / (1 + 0.15 * (h - 1));
   for (const u of units) {
     if (!u.alive) continue;
     u.age += dt; u.fireWait -= dt;
@@ -2408,7 +2468,11 @@ GAMES.kaiju = {
   intro: 'You are Scalezor, a lizard as tall as a skyscraper. Wreck the city. ' +
     '← → turn · ↑ ↓ walk · Space stomps in front · F swipes the tail behind · Esc quits.',
   start() {
-    kaijuRun = 'scalezor'; kaijuClock = 0; stompWait = swipeWait = eatWait = roarWait = gait = 0;
+    kaijuRun = chosenKaiju === 'random' ? ROSTER[Math.floor(Math.random() * ROSTER.length)] : chosenKaiju;
+    kaijuModel = MODELS[kaijuRun];
+    for (const [k, m] of Object.entries(MODELS)) m.visible = k === kaijuRun;
+    dress(kaijuModel); kaijuMesh.userData.chase = kaijuModel.userData.chase;
+    kaijuClock = 0; stompWait = swipeWait = eatWait = roarWait = gait = 0;
     kHealth = KAIJU[kaijuRun].health; kEnergy = 100; armyQuiet = roarFear = 0;
     peopleMesh.visible = unitShots.visible = true; people.forEach(spawnPerson);
     heat = maxHeat = 1; armyFill = ARMY_FILL; armyAuto = true; clearArmy();
@@ -2440,7 +2504,7 @@ GAMES.kaiju = {
       }
       if (k.has('fire') && stompWait <= 0) { stomp(); stompWait = STOMP_GAP; }
       if (k.has('swipe') && swipeWait <= 0) { swipe(); swipeWait = SWIPE_GAP; }
-      if (k.has('eat') && eatWait <= 0) { eat(); eatWait = EAT_GAP; }
+      if (k.has('eat') && eatWait <= 0) { eat(); eatWait = K.eatGap ?? EAT_GAP; }
       if (k.has('roar')) roar();
       kEnergy = Math.max(0, kEnergy - dt);   // the body burns 1 a second; at 0 it burns health
       if (kEnergy <= 0) damage(STARVING * dt);
@@ -2449,14 +2513,14 @@ GAMES.kaiju = {
     stepPeople(dt, kaijuClock);
     for (const c of civilians) if (!c.alive && kaijuClock >= c.respawnAt) { c.alive = true; setCivilianShown(c, true); }
     gait += walked * dt * 9;
-    const [l, r] = kaijuMesh.userData.legs;
+    const [l, r] = kaijuModel.userData.legs;
     l.rotation.x = Math.sin(gait) * 0.6; r.rotation.x = -Math.sin(gait) * 0.6;
     placeKaiju();
     hud.hp.style.width = 100 * kHealth / KAIJU[kaijuRun].health + '%'; hud.en.style.width = kEnergy + '%';
   },
 };
 LW.kaiju = { mesh: kaijuMesh, peopleMesh, people, stomp, swipe, eat, roar, damage,
-  heatFor, army: { units, shots: armyShots, spawn: spawnUnit } };
+  models: Object.values(MODELS), heatFor, army: { units, shots: armyShots, spawn: spawnUnit } };
 Object.defineProperties(LW.kaiju.army, { auto: { get: () => armyAuto, set: v => { armyAuto = v; } } });
 Object.defineProperties(LW.kaiju, {   // live: they change every frame
   health: { get: () => kHealth, set: v => { kHealth = v; } },
@@ -2464,6 +2528,8 @@ Object.defineProperties(LW.kaiju, {   // live: they change every frame
   roarWait: { get: () => roarWait },
   armyQuiet: { get: () => armyQuiet },
   heat: { get: () => heat },
+  run: { get: () => kaijuRun },
+  look: { get: () => kaijuLook },
   maxHeat: { get: () => maxHeat },
   best: { get: () => GAMES.kaiju.best },
 });

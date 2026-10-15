@@ -134,7 +134,8 @@ Raised 2026-09-23 (second batch), needs design before building:
   the scene?).
 
 ## Final sprint: measure the GPU
-- [ ] Frame-cost check at full view (planet-v2 AC 7). Moved here from Sprint P2 on 2026-10-15: measure the whole game once, after Kaiju. Replace the two record-only checks in
+- [ ] Frame-cost check at full view (planet-v2 AC 7). Moved here from Sprint P2 on 2026-10-15: measure the whole game once, after Kaiju.
+  Replace the two record-only checks in
   `tests/frame-cost.js` (they always pass). From the start view: assert desktop High under
   16 ms and phone emulation Low under 33 ms. Time whole frames, GPU included (rAF-timed run,
   or `gl.finish()` before the clock stops), not `LW.frame()` submit time. Real 4× CPU throttle

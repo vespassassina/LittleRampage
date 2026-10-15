@@ -71,12 +71,12 @@ Epics are grouped by game, not by order; the milestone tag on each sprint says w
 - [x] Quit restores everything (AC 9)
 - [x] Kaiju on touch: joystick walk, Stomp and Swipe buttons (AC 11)
 
-### Sprint K2: eat and survive
-- [ ] Health, energy, drain, HUD bars (AC 5)
-- [ ] Tiny people: instanced, walk the sidewalks, flee from the kaiju (AC 6 part)
-- [ ] Eat: reach, nearest edible, GULP burst, restore table (AC 4)
-- [ ] Roar and cooldown (AC 6)
-- [ ] Eat and Roar buttons on touch (AC 11)
+### Sprint K2: eat and survive, done 2026-10-15
+- [x] Health, energy, drain, HUD bars (AC 5)
+- [x] Tiny people: instanced, walk the sidewalks, flee from the kaiju (AC 6 part)
+- [x] Eat: reach, nearest edible, GULP burst, restore table (AC 4)
+- [x] Roar and cooldown (AC 6)
+- [x] Eat and Roar buttons on touch (AC 11)
 
 ### Sprint K3: the army
 - [ ] Heat from score; police cars chase and fire (AC 7)

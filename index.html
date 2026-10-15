@@ -56,6 +56,9 @@
   #hud[data-game=raid] .courier, #hud[data-game=courier] .raid { display: none; }
   #hud[data-game=kaiju] .courier, #hud[data-game=kaiju] .raid, #hud[data-game=kaiju] .target,
   #hud[data-game=raid] .kaiju, #hud[data-game=courier] .kaiju { display: none; }
+  .bar { width: 90px; height: 16px; border: 3px solid #000; border-radius: 8px; background: #ddd; overflow: hidden; display: inline-block; }
+  .bar i { display: block; height: 100%; background: #e8263b; }
+  #h-en { background: #ffd93d; }
   #play-kaiju { background: #5cc96b; color: #fff; -webkit-text-stroke: 1px #000; }
   #h-lives { color: #e8263b; }
   #play-raid { background: #5ab0ff; color: #fff; -webkit-text-stroke: 1px #000; }
@@ -122,6 +125,9 @@
   }
   #tstomp { right: 28px; bottom: 28px; width: 84px; height: 84px; background: #5cc96b; font-size: 18px; }
   #tswipe { right: 40px; bottom: 128px; width: 70px; height: 70px; background: #ff9f43; font-size: 15px; }
+  #teat { right: 122px; bottom: 28px; width: 70px; height: 70px; background: #ff7eb6; font-size: 16px; }
+  #troar { right: 118px; bottom: 108px; width: 62px; height: 62px; background: #7a5cff; font-size: 14px; }
+  @media (max-width: 600px) { #teat { right: 108px; width: 58px; height: 58px; font-size: 13px; } #troar { right: 104px; bottom: 96px; width: 52px; height: 52px; font-size: 12px; } }
   @media (max-width: 600px) { #tstomp { width: 70px; height: 70px; font-size: 15px; } #tswipe { width: 58px; height: 58px; font-size: 13px; right: 34px; bottom: 108px; } }
   @media (max-width: 600px) { #tjoy { width: 96px; height: 96px; } #tfire { width: 70px; height: 70px; font-size: 16px; } #tbomb { width: 58px; height: 58px; font-size: 13px; right: 34px; bottom: 108px; } }
 </style>
@@ -141,6 +147,8 @@
   <div class="box raid">LIVES <b id="h-lives"></b></div>
   <div class="box raid">SCORE <b id="h-points">0</b></div>
   <div class="box kaiju">SCORE <b id="h-kpoints">0</b></div>
+  <div class="box kaiju">HEALTH <span class="bar"><i id="h-hp"></i></span></div>
+  <div class="box kaiju">ENERGY <span class="bar"><i id="h-en"></i></span></div>
   <div class="box target"><div id="h-arrow"></div><span id="h-town"></span><b id="h-dist"></b></div>
   <button id="h-quit">Quit</button>
 </div>
@@ -156,6 +164,8 @@
   <div id="tbomb" hidden>BOMB</div>
   <div id="tstomp" class="tkaiju" hidden>STOMP</div>
   <div id="tswipe" class="tkaiju" hidden>SWIPE</div>
+  <div id="teat" class="tkaiju" hidden>EAT</div>
+  <div id="troar" class="tkaiju" hidden>ROAR</div>
 </div>
 <div id="game-buttons">
   <button id="play">Play Sky Courier</button>
@@ -1508,7 +1518,7 @@ let rules = null;
 
 const $ = id => document.getElementById(id);
 const hud = { el: $('hud'), time: $('h-time'), timebox: $('h-timebox'), score: $('h-score'), town: $('h-town'),
-  dist: $('h-dist'), arrow: $('h-arrow'), lives: $('h-lives'), points: $('h-points'), kpoints: $('h-kpoints') };
+  dist: $('h-dist'), arrow: $('h-arrow'), lives: $('h-lives'), points: $('h-points'), kpoints: $('h-kpoints'), hp: $('h-hp'), en: $('h-en') };
 const gdir = () => { const u = Math.random() * 2 - 1, t = Math.random() * 6.283, s = Math.sqrt(1 - u * u); return new V3(s * Math.cos(t), u, s * Math.sin(t)); };
 
 function loadBest(key) {
@@ -1600,7 +1610,7 @@ $('p-back').onclick = quitGame;
 $('h-quit').onclick = quitGame;
 
 const KEYMAP = { ArrowLeft: 'left', a: 'left', A: 'left', ArrowRight: 'right', d: 'right', D: 'right',
-  ArrowUp: 'up', w: 'up', W: 'up', ArrowDown: 'down', s: 'down', S: 'down', ' ': 'fire', b: 'bomb', B: 'bomb', f: 'swipe', F: 'swipe' };
+  ArrowUp: 'up', w: 'up', W: 'up', ArrowDown: 'down', s: 'down', S: 'down', ' ': 'fire', b: 'bomb', B: 'bomb', f: 'swipe', F: 'swipe', e: 'eat', E: 'eat', r: 'roar', R: 'roar' };
 addEventListener('keydown', e => {
   if (!G.active) return;
   if (KEYMAP[e.key]) { G.keys.add(KEYMAP[e.key]); e.preventDefault(); }
@@ -1612,7 +1622,7 @@ addEventListener('blur', () => G.keys.clear());
 // --- Touch layer: joystick (#tjoy) + fire button (#tfire). Feeds the same G.keys set
 // KEYMAP populates above, so gameStep()/raid's fire step don't need to know the input source.
 const touchEl = $('touch'), joystick = $('tjoy'), joyKnob = $('tjoy-knob'), fireBtn = $('tfire'), bombBtn = $('tbomb');
-const stompBtn = $('tstomp'), swipeBtn = $('tswipe');
+const stompBtn = $('tstomp'), swipeBtn = $('tswipe'), eatBtn = $('teat'), roarBtn = $('troar');
 let touchForceShow = false;
 const STICK_DEADZONE = 0.3;
 function setStickKeys(x, y) {
@@ -1621,7 +1631,8 @@ function setStickKeys(x, y) {
   set('up', y > STICK_DEADZONE); set('down', y < -STICK_DEADZONE);
 }
 function setFireKey(pressed) { pressed ? G.keys.add('fire') : G.keys.delete('fire'); }
-function setSwipeKey(pressed) { pressed ? G.keys.add('swipe') : G.keys.delete('swipe'); }
+const setKey = (name, on) => on ? G.keys.add(name) : G.keys.delete(name);
+const setSwipeKey = on => setKey('swipe', on), setEatKey = on => setKey('eat', on), setRoarKey = on => setKey('roar', on);
 function setBombKey(pressed) { pressed ? G.keys.add('bomb') : G.keys.delete('bomb'); }
 function updateTouchVisibility() {
   const coarse = window.matchMedia('(pointer: coarse)').matches;
@@ -1629,7 +1640,7 @@ function updateTouchVisibility() {
   touchEl.hidden = !show;
   fireBtn.hidden = !(show && G.kind === 'raid');
   bombBtn.hidden = fireBtn.hidden;
-  stompBtn.hidden = swipeBtn.hidden = !(show && G.kind === 'kaiju');
+  stompBtn.hidden = swipeBtn.hidden = eatBtn.hidden = roarBtn.hidden = !(show && G.kind === 'kaiju');
 }
 
 let joyTouchId = null, joyStartX = 0, joyStartY = 0;
@@ -1662,12 +1673,13 @@ fireBtn.addEventListener('touchcancel', () => setFireKey(false));
 bombBtn.addEventListener('touchstart', e => { setBombKey(true); e.preventDefault(); }, { passive: false });
 bombBtn.addEventListener('touchend', e => { setBombKey(false); e.preventDefault(); });
 bombBtn.addEventListener('touchcancel', () => setBombKey(false));
-stompBtn.addEventListener('touchstart', e => { setFireKey(true); e.preventDefault(); }, { passive: false });
-stompBtn.addEventListener('touchend', e => { setFireKey(false); e.preventDefault(); });
-stompBtn.addEventListener('touchcancel', () => setFireKey(false));
-swipeBtn.addEventListener('touchstart', e => { setSwipeKey(true); e.preventDefault(); }, { passive: false });
-swipeBtn.addEventListener('touchend', e => { setSwipeKey(false); e.preventDefault(); });
-swipeBtn.addEventListener('touchcancel', () => setSwipeKey(false));
+// Kaiju's four buttons hold a key while pressed, like the stick does.
+function holdButton(btn, set) {
+  btn.addEventListener('touchstart', e => { set(true); e.preventDefault(); }, { passive: false });
+  btn.addEventListener('touchend', e => { set(false); e.preventDefault(); });
+  btn.addEventListener('touchcancel', () => set(false));
+}
+holdButton(stompBtn, setFireKey); holdButton(swipeBtn, setSwipeKey); holdButton(eatBtn, setEatKey); holdButton(roarBtn, setRoarKey);
 
 function gameStep(dt, t) {
   const k = G.keys;
@@ -1783,9 +1795,9 @@ function wordTexture(word) {
   g.fillStyle = '#ffd93d'; g.fillText(word, 128, 66);
   const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t;
 }
-const WORDS = { pop: ['POP!'], boom: ['BOOM!', 'POW!', 'KABLAM!'] };
+const WORDS = { pop: ['POP!'], boom: ['BOOM!', 'POW!', 'KABLAM!'], gulp: ['GULP!'] };
 const WORD_TEX = {};
-for (const w of [...WORDS.pop, ...WORDS.boom]) WORD_TEX[w] = wordTexture(w);
+for (const w of [...WORDS.pop, ...WORDS.boom, ...WORDS.gulp]) WORD_TEX[w] = wordTexture(w);
 const FIREBALL = new THREE.IcosahedronGeometry(1, 1);
 const bursts = Array.from({ length: 10 }, () => {
   const g = new THREE.Group();
@@ -1800,7 +1812,7 @@ const bursts = Array.from({ length: 10 }, () => {
 let nextBurst = 0;
 function burst(pos, kind) {
   const b = bursts[nextBurst]; nextBurst = (nextBurst + 1) % bursts.length;
-  b.g.position.copy(pos); b.g.visible = true; b.age = 0; b.size = kind === 'pop' ? 0.3 : 0.55;
+  b.g.position.copy(pos); b.g.visible = true; b.age = 0; b.size = kind === 'boom' ? 0.55 : 0.3;
   b.word.material.map = WORD_TEX[pick(WORDS[kind])];
 }
 movers.push((t, dt) => {
@@ -2073,10 +2085,13 @@ GAMES.raid = {
 // A giant on foot: it walks the terrain, stomps and swipes scenery and traffic away. Smashed
 // things go through world.destroy()/restoreAll(), the same path Sky Raid's bombs use.
 const KAIJU = {
-  scalezor: { name: 'Scalezor', speed: 1.0, swipe: { reach: 1.0, half: 1.2, dir: -1 } },   // tail: wide arc behind
+  scalezor: { name: 'Scalezor', speed: 1.0, health: 100, swipe: { reach: 1.0, half: 1.2, dir: -1 } },   // tail: wide arc behind
 };
 const WALK = 0.7, KAIJU_TURN = 1.4, STOMP_AT = 0.5, STOMP_R = 0.5, SHALLOW = 0.3, LOW_PLANE = 1.5;
 const STOMP_GAP = 0.4, SWIPE_GAP = 0.6, KAIJU_BURSTS = 3;
+const COST = { stomp: 5, swipe: 10, roar: 15 }, ROAR_COOLDOWN = 10, ROAR_QUIET = 3, ROAR_FEAR = 5, STARVING = 2;
+const EAT_REACH = 1.0, EAT_GAP = 0.5, EAT_GAINS = { person: 3, car: 8, tank: 15, plane: 20 };   // energy; health gets a quarter
+const PEOPLE_PER_CITY = 24, PERSON_WALK = 0.15, PERSON_FLEE = 0.8, PERSON_PANIC = 1.1, FLEE_R = 2.2, PERSON_RESPAWN = 30;
 const SMASH = { house: 5, tree: 1, car: 5, plane: 40 };
 
 // Scalezor: green lizard, orange back plates. +Z is forward, the tail trails behind.
@@ -2108,7 +2123,14 @@ function makeScalezor() {
   return g;
 }
 const kaijuMesh = makeScalezor();
-let kaijuRun = null, kaijuClock = 0, stompWait = 0, swipeWait = 0, gait = 0;
+let kaijuRun = null, kaijuClock = 0, stompWait = 0, swipeWait = 0, eatWait = 0, roarWait = 0, gait = 0;
+let kHealth = 0, kEnergy = 0, armyQuiet = 0, roarFear = 0;
+// Energy pays for moves; with none left they are off. Returns whether the move happens.
+function spend(cost) {
+  if (kEnergy <= 0) return false;
+  kEnergy = Math.max(0, kEnergy - cost);
+  return true;
+}
 const _kp = new V3(), _kf = new V3(), _kc = new V3(), _kv = new V3(), _km = new THREE.Matrix4();
 
 const smashPoints = e => e.kind === 'building' ? Math.round(10 * (e.height ?? 1)) : SMASH[e.kind] ?? 1;
@@ -2140,6 +2162,7 @@ function smash(inside, planes) {
   return n;
 }
 function stomp() {
+  if (!spend(COST.stomp)) return 0;
   // a disc STOMP_R across, centred STOMP_AT in front of the feet
   const a = STOMP_AT / R;
   const centre = new V3().copy(G.p).multiplyScalar(Math.cos(a)).addScaledVector(G.f, Math.sin(a));
@@ -2148,6 +2171,7 @@ function stomp() {
   return smash(hit, false);
 }
 function swipe() {
+  if (!spend(COST.swipe)) return 0;
   const { reach, half, dir } = KAIJU[kaijuRun].swipe;
   const sf = new V3().copy(G.f).multiplyScalar(dir), cosR = Math.cos(reach / R);
   const arc = d => {
@@ -2159,6 +2183,83 @@ function swipe() {
   };
   return smash(arc, false) + smash(arc, true);
 }
+// Tiny cartoon people: one instanced mesh, wander inside their city, run from the kaiju.
+const PERSON = mergeGeometries([new THREE.BoxGeometry(0.05, 0.09, 0.035).translate(0, 0.045, 0),
+  new THREE.SphereGeometry(0.03, 8, 6).translate(0, 0.115, 0)]);
+const peopleMesh = new THREE.InstancedMesh(PERSON, toon('#ffffff'), PEOPLE_PER_CITY * CITIES.length);
+peopleMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+peopleMesh.frustumCulled = false; peopleMesh.visible = false; scene.add(peopleMesh);
+const people = Array.from({ length: peopleMesh.count }, (_, i) => {
+  peopleMesh.setColorAt(i, new THREE.Color(['#ff6b6b', '#4ecdc4', '#ffd93d', '#7a5cff', '#ff9f43', '#5ab0ff'][i % 6]));
+  return { city: CITIES[Math.floor(i / PEOPLE_PER_CITY)], p: new V3(), f: new V3(), alive: false, respawnAt: 0, ph: Math.random() * 6.28 };
+});
+const _pp = new V3(), _pf = new V3(), _pm = new THREE.Matrix4(), _pv = new V3(), _ZERO = new THREE.Matrix4().makeScale(0, 0, 0);
+function spawnPerson(q) {
+  const c = q.city, [t1, t2] = tangentBasis(c.dir), a = Math.random() * 6.283, r = Math.sqrt(Math.random()) * c.cap * 0.8;
+  q.p.copy(c.dir).addScaledVector(t1, Math.cos(a) * r).addScaledVector(t2, Math.sin(a) * r).normalize();
+  q.f.copy(t1).applyAxisAngle(q.p, Math.random() * 6.283).addScaledVector(q.p, 0).normalize();
+  q.f.addScaledVector(q.p, -q.f.dot(q.p)).normalize();
+  q.alive = true;
+}
+function stepPeople(dt, t) {
+  const cosFlee = Math.cos(FLEE_R / R), panic = roarFear > 0;
+  people.forEach((q, i) => {
+    if (!q.alive) {
+      if (kaijuClock >= q.respawnAt) spawnPerson(q); else { peopleMesh.setMatrixAt(i, _ZERO); return; }
+    }
+    let speed = PERSON_WALK;
+    if (panic || q.p.dot(G.p) > cosFlee) {   // away from the kaiju along the surface
+      _pv.copy(q.p).multiplyScalar(G.p.dot(q.p)).sub(G.p);
+      if (_pv.lengthSq() > 1e-8) q.f.copy(_pv).normalize();
+      speed = panic ? PERSON_PANIC : PERSON_FLEE;
+    } else {
+      q.f.applyAxisAngle(q.p, Math.sin(t * 0.7 + q.ph) * dt);
+      if (q.p.angleTo(q.city.dir) > q.city.cap * 0.9) q.f.copy(q.city.dir).addScaledVector(q.p, -q.city.dir.dot(q.p)).normalize();   // back to town
+    }
+    _pp.copy(q.p); _pf.copy(q.f);
+    advance(q.p, q.f, speed * dt, R + 0.3);
+    if (heightAt(q.p) < R + 0.02) { q.p.copy(_pp); q.f.copy(_pf); }   // never into the sea
+    peopleMesh.setMatrixAt(i, _pm.copy(frameAt(_pv.copy(q.p).multiplyScalar(heightAt(q.p)), q.p, q.f)));
+  });
+  peopleMesh.instanceMatrix.needsUpdate = true;
+}
+
+// Eat: the nearest person, car or low plane within reach goes in. Not scored: it is survival.
+function eat() {
+  let best = null, bestD = EAT_REACH / R;
+  const consider = (kind, at, take) => {
+    const a = Math.acos(clamp(_kc.copy(at).normalize().dot(G.p), -1, 1));
+    if (a < bestD) { bestD = a; best = { kind, at: _kv.copy(at), take }; }
+  };
+  for (const q of people) if (q.alive) consider('person', _pv.copy(q.p).multiplyScalar(R + 0.3), () => { q.alive = false; q.respawnAt = kaijuClock + PERSON_RESPAWN; });
+  for (const c of civilians) {
+    if (!c.alive || c.kind === 'boat') continue;
+    const at = civWorld(c, _kp);
+    if (c.kind === 'plane' && at.length() - heightAt(_kc.copy(at).normalize()) > LOW_PLANE) continue;
+    consider(c.kind, at, () => { c.alive = false; setCivilianShown(c, false); c.respawnAt = kaijuClock + CIVILIAN_RESPAWN; });
+  }
+  if (!best) return false;
+  best.take();
+  const gain = EAT_GAINS[best.kind];
+  kEnergy = Math.min(100, kEnergy + gain); kHealth = Math.min(KAIJU[kaijuRun].health, kHealth + gain / 4);
+  burst(best.at, 'gulp');
+  return true;
+}
+function roar() {
+  if (roarWait > 0 || !spend(COST.roar)) return false;
+  roarWait = ROAR_COOLDOWN; roarFear = ROAR_FEAR; armyQuiet = ROAR_QUIET;
+  pop('ROAR!');
+  return true;
+}
+function endKaiju() {
+  G.running = false;
+  recordBest();
+  panel('Flattened!', `Score ${G.score}. You lasted ${Math.round(kaijuClock)} s. Best ${GAMES.kaiju.best}.`, 'Play again');
+}
+function damage(n) {
+  kHealth = Math.max(0, kHealth - n);
+  if (kHealth <= 0 && G.running) endKaiju();
+}
 function placeKaiju() {
   const h = heightAt(G.p);
   _km.copy(frameAt(_kp.copy(G.p).multiplyScalar(h), G.p, G.f));
@@ -2169,7 +2270,9 @@ GAMES.kaiju = {
   intro: 'You are Scalezor, a lizard as tall as a skyscraper. Wreck the city. ' +
     '← → turn · ↑ ↓ walk · Space stomps in front · F swipes the tail behind · Esc quits.',
   start() {
-    kaijuRun = 'scalezor'; kaijuClock = 0; stompWait = swipeWait = gait = 0;
+    kaijuRun = 'scalezor'; kaijuClock = 0; stompWait = swipeWait = eatWait = roarWait = gait = 0;
+    kHealth = KAIJU[kaijuRun].health; kEnergy = 100; armyQuiet = roarFear = 0;
+    peopleMesh.visible = true; people.forEach(spawnPerson);
     const c = CITIES[0], [t1] = tangentBasis(c.dir);   // drop it at the city's edge, facing in
     G.p.copy(c.dir).multiplyScalar(Math.cos(c.cap)).addScaledVector(t1, Math.sin(c.cap)).normalize();
     G.f.copy(c.dir).addScaledVector(G.p, -c.dir.dot(G.p)).normalize();
@@ -2178,12 +2281,12 @@ GAMES.kaiju = {
     placeKaiju();
   },
   stop() {
-    kaijuMesh.visible = false;
+    kaijuMesh.visible = peopleMesh.visible = false;
     for (const c of civilians) { c.alive = true; setCivilianShown(c, true); }
     world.restoreAll();
   },
   step(dt) {
-    kaijuClock += dt; stompWait -= dt; swipeWait -= dt;
+    kaijuClock += dt; stompWait -= dt; swipeWait -= dt; eatWait -= dt; roarWait -= dt; armyQuiet -= dt; roarFear -= dt;
     const k = G.keys, K = KAIJU[kaijuRun];
     let walked = 0;
     if (G.running) {
@@ -2198,15 +2301,28 @@ GAMES.kaiju = {
       }
       if (k.has('fire') && stompWait <= 0) { stomp(); stompWait = STOMP_GAP; }
       if (k.has('swipe') && swipeWait <= 0) { swipe(); swipeWait = SWIPE_GAP; }
+      if (k.has('eat') && eatWait <= 0) { eat(); eatWait = EAT_GAP; }
+      if (k.has('roar')) roar();
+      kEnergy = Math.max(0, kEnergy - dt);   // the body burns 1 a second; at 0 it burns health
+      if (kEnergy <= 0) damage(STARVING * dt);
     }
+    stepPeople(dt, kaijuClock);
     for (const c of civilians) if (!c.alive && kaijuClock >= c.respawnAt) { c.alive = true; setCivilianShown(c, true); }
     gait += walked * dt * 9;
     const [l, r] = kaijuMesh.userData.legs;
     l.rotation.x = Math.sin(gait) * 0.6; r.rotation.x = -Math.sin(gait) * 0.6;
     placeKaiju();
+    hud.hp.style.width = 100 * kHealth / KAIJU[kaijuRun].health + '%'; hud.en.style.width = kEnergy + '%';
   },
 };
-LW.kaiju = { mesh: kaijuMesh, stomp, swipe };
+LW.kaiju = { mesh: kaijuMesh, peopleMesh, people, stomp, swipe, eat, roar, damage };
+Object.defineProperties(LW.kaiju, {   // live: they change every frame
+  health: { get: () => kHealth, set: v => { kHealth = v; } },
+  energy: { get: () => kEnergy, set: v => { kEnergy = v; } },
+  roarWait: { get: () => roarWait },
+  armyQuiet: { get: () => armyQuiet },
+  best: { get: () => GAMES.kaiju.best },
+});
 LW.game = G;
 LW.camera = camera;
 LW.V3 = V3;
@@ -2221,8 +2337,9 @@ Object.defineProperties(LW.raid, {   // live: they change every frame
   best: { get: () => GAMES.raid.best, set: v => { GAMES.raid.best = v; } },
 });
 LW.touch = {
-  el: touchEl, joystick, fireBtn, bombBtn, stompBtn, swipeBtn,
+  el: touchEl, joystick, fireBtn, bombBtn, stompBtn, swipeBtn, eatBtn, roarBtn,
   setStick: setStickKeys, firePress: setFireKey, bombPress: setBombKey, stompPress: setFireKey, swipePress: setSwipeKey,
+  eatPress: setEatKey, roarPress: setRoarKey,
   get forceShow() { return touchForceShow; },
   set forceShow(v) { touchForceShow = v; updateTouchVisibility(); },
 };

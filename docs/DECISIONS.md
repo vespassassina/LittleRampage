@@ -5,6 +5,21 @@ Newest first.
 
 
 
+## 2026-10-15 Kaiju K2: health, energy, people, eat, roar
+
+- Moves need energy above 0 and cost 5 (stomp), 10 (swipe), 15 (roar). Energy burns 1 a second; at 0
+  health burns 2 a second. Eating works at 0 energy, or the run could never recover.
+- Eat takes the nearest person, car or low plane within 1.0 of the feet, any direction. Energy +3 /
+  +8 / +20, health a quarter of that, both capped. No score. Held key repeats every 0.5 s. Cars
+  return after 20 s, people after 30 s.
+- 120 people (24 per city) are one instanced mesh, wander inside their city and run from the kaiju
+  within 2.2 (0.8 u/s) and from a roar for 5 s (1.1 u/s). They stop at the shore. They are
+  0.14 tall: hard to see from the chase camera, tune in K4 if wanted.
+- Roar: 10 s cooldown, a second roar inside it does nothing and costs nothing. `LW.kaiju.armyQuiet`
+  counts the 3 s the army must hold fire; K3 reads it.
+- At 0 health: end panel with score, time survived and best (`lw-kaiju-best`). Heat is K3.
+- `LW.kaiju.damage(n)` is the one door for army hits in K3.
+
 ## 2026-10-15 Kaiju K1: walk, stomp, swipe
 
 - Kaiju reuses the game core (`GAMES.kaiju`, `walks: true`): `G.p`/`G.f` hold the kaiju's place, the

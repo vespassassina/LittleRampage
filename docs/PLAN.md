@@ -64,12 +64,12 @@ Epics are grouped by game, not by order; the milestone tag on each sprint says w
 
 ## Epic: Kaiju ([spec](specs/kaiju.md)) — milestone 3
 
-### Sprint K1: a giant that walks and smashes
-- [ ] Play Kaiju, start screen, one kaiju (Scalezor) (AC 1)
-- [ ] Walk on the sphere, terrain following, sea rules, kaiju camera (AC 2)
-- [ ] Stomp and swipe on destructible scenery and traffic; dust, POW, score (AC 3)
-- [ ] Quit restores everything (AC 9)
-- [ ] Kaiju on touch: joystick walk, Stomp and Swipe buttons (AC 11)
+### Sprint K1: a giant that walks and smashes, done 2026-10-15
+- [x] Play Kaiju, start screen, one kaiju (Scalezor) (AC 1)
+- [x] Walk on the sphere, terrain following, sea rules, kaiju camera (AC 2)
+- [x] Stomp and swipe on destructible scenery and traffic; dust, POW, score (AC 3)
+- [x] Quit restores everything (AC 9)
+- [x] Kaiju on touch: joystick walk, Stomp and Swipe buttons (AC 11)
 
 ### Sprint K2: eat and survive
 - [ ] Health, energy, drain, HUD bars (AC 5)

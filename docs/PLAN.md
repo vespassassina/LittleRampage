@@ -78,11 +78,11 @@ Epics are grouped by game, not by order; the milestone tag on each sprint says w
 - [x] Roar and cooldown (AC 6)
 - [x] Eat and Roar buttons on touch (AC 11)
 
-### Sprint K3: the army
-- [ ] Heat from score; police cars chase and fire (AC 7)
-- [ ] Tanks roll out and shell (AC 7)
-- [ ] Jets strafe with missiles (AC 7)
-- [ ] End screen, best score (AC 8)
+### Sprint K3: the army (done 2026-10-15)
+- [x] Heat from score; police cars chase and fire (AC 7)
+- [x] Tanks roll out and shell (AC 7)
+- [x] Jets strafe with missiles (AC 7)
+- [x] End screen, best score (AC 8)
 
 ### Sprint K4: a roster of monsters
 - [ ] Bonkers and Shellback with their traits; Random with variations (AC 1, 7, 10)

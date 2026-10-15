@@ -2,8 +2,21 @@
 
 Newest first.
 
+## 2026-10-15 Kaiju K3: heat and the army
 
-
+- Heat is 1 below 500, 2 below 1500, then +1 per 1500 points. Police target `min(12, 3+2(h-1))`;
+  tanks from heat 2, `min(6, h)`; jets from heat 3, `min(4, h-2)`. One unit per kind joins every
+  1.5 s while below target; crossing a heat threshold fills at once.
+- Deviation from the spec: units appear on a ring 3.5-4.5 from the kaiju (on land), not at the city
+  edge. The kaiju walks off, so city-edge spawns would be too far away to matter.
+- Police: 0.9 u/s, fire inside 2.5, 0.5 damage. Tanks: 0.5 u/s, fire inside 3.5, 3 damage, slower
+  gap. Jets: one pass at 1.8 u/s, one missile at 2.8, 5 damage, then gone. Shots fly to the chest
+  with no lead, so a walking kaiju can dodge them. Units beyond 7 are recycled.
+- A roar holds all fire for 3 s. Stomp and swipe wreck police (10) and tanks (25); jets are out of
+  reach. Eating a police car counts as a car (+8), a tank +15.
+- All units and 40 shots are pooled; nothing is created after load.
+- Balance is rough: at score 3000 (heat 4) the army kills a still kaiju in about 13 s. K4 balance pass.
+- Tests set `army.auto = false` where they want a quiet field.
 
 ## 2026-10-15 Kaiju K2: health, energy, people, eat, roar
 

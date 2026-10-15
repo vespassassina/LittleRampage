@@ -5,6 +5,23 @@ Newest first.
 
 
 
+## 2026-10-15 Kaiju K1: walk, stomp, swipe
+
+- Kaiju reuses the game core (`GAMES.kaiju`, `walks: true`): `G.p`/`G.f` hold the kaiju's place, the
+  plane is hidden, the camera chases `kaijuMesh.userData.chase`. In the city the camera is held above
+  `skyFloor`, so it never sits inside a tower.
+- Stands on `heightAt` exactly. Walks at 0.7 u/s x speed. Half speed where ground is below sea level
+  (wading); a step that would land more than 0.3 below sea level is refused (deep sea turns it back).
+- Interpretations of the spec: stomp is a disc of radius 0.5 centred 0.5 ahead of the feet. Scalezor's
+  swipe is everything within 1.0 and within 69 degrees of straight behind. Held keys repeat every
+  0.4 s (stomp) and 0.6 s (swipe).
+- Score: building `round(10 x height)` (`entry.height` is now stored on building entries), house 5,
+  tree 1, car 5, low plane (under 1.5 above ground, swipe only) 40. Traffic returns after 20 s, as in Raid.
+- Smashed things go through `world.destroy`; quit calls `restoreAll()` and revives traffic.
+- Deferred: windmills (15) are not batch entries yet; the dust cloud is the shared BOOM/POW burst;
+  stomp costs no energy until K2. Police cars and tanks come in K3.
+- Touch: `#tstomp` (sets the Space key) and `#tswipe` (F key); Raid keeps Fire and Bomb.
+
 ## 2026-10-15 — Sky Raid R2: the fight, built in the main session
 
 Subagents were unusable: the local settings map Haiku and Sonnet to `z-ai/glm-5.3-flash` and

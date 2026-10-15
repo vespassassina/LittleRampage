@@ -54,6 +54,9 @@
   @media (max-width: 600px) { h1 { font-size: 34px; } button { font-size: 17px; padding: 5px 10px; } }
   [hidden] { display: none !important; }
   #hud[data-game=raid] .courier, #hud[data-game=courier] .raid { display: none; }
+  #hud[data-game=kaiju] .courier, #hud[data-game=kaiju] .raid, #hud[data-game=kaiju] .target,
+  #hud[data-game=raid] .kaiju, #hud[data-game=courier] .kaiju { display: none; }
+  #play-kaiju { background: #5cc96b; color: #fff; -webkit-text-stroke: 1px #000; }
   #h-lives { color: #e8263b; }
   #play-raid { background: #5ab0ff; color: #fff; -webkit-text-stroke: 1px #000; }
   #play { background: #ff6b6b; color: #fff; -webkit-text-stroke: 1px #000; }
@@ -112,6 +115,14 @@
     display: flex; align-items: center; justify-content: center; font-size: 16px; letter-spacing: 1px;
     pointer-events: auto; touch-action: none; user-select: none; -webkit-user-select: none;
   }
+  .tkaiju {
+    position: fixed; border-radius: 50%; border: 3px solid #000; box-shadow: 3px 3px 0 #000; color: #fff; -webkit-text-stroke: 1px #000;
+    display: flex; align-items: center; justify-content: center; letter-spacing: 1px;
+    pointer-events: auto; touch-action: none; user-select: none; -webkit-user-select: none;
+  }
+  #tstomp { right: 28px; bottom: 28px; width: 84px; height: 84px; background: #5cc96b; font-size: 18px; }
+  #tswipe { right: 40px; bottom: 128px; width: 70px; height: 70px; background: #ff9f43; font-size: 15px; }
+  @media (max-width: 600px) { #tstomp { width: 70px; height: 70px; font-size: 15px; } #tswipe { width: 58px; height: 58px; font-size: 13px; right: 34px; bottom: 108px; } }
   @media (max-width: 600px) { #tjoy { width: 96px; height: 96px; } #tfire { width: 70px; height: 70px; font-size: 16px; } #tbomb { width: 58px; height: 58px; font-size: 13px; right: 34px; bottom: 108px; } }
 </style>
 <script type="importmap">
@@ -129,6 +140,7 @@
   <div class="box courier">DELIVERED <b id="h-score">0</b></div>
   <div class="box raid">LIVES <b id="h-lives"></b></div>
   <div class="box raid">SCORE <b id="h-points">0</b></div>
+  <div class="box kaiju">SCORE <b id="h-kpoints">0</b></div>
   <div class="box target"><div id="h-arrow"></div><span id="h-town"></span><b id="h-dist"></b></div>
   <button id="h-quit">Quit</button>
 </div>
@@ -142,10 +154,13 @@
   <div id="tjoy"><div id="tjoy-knob"></div></div>
   <div id="tfire" hidden>FIRE</div>
   <div id="tbomb" hidden>BOMB</div>
+  <div id="tstomp" class="tkaiju" hidden>STOMP</div>
+  <div id="tswipe" class="tkaiju" hidden>SWIPE</div>
 </div>
 <div id="game-buttons">
   <button id="play">Play Sky Courier</button>
   <button id="play-raid">Play Sky Raid</button>
+  <button id="play-kaiju">Play Kaiju</button>
 </div>
 <div id="ui">
   <button data-mode="orbit" class="on">Orbit</button>
@@ -573,7 +588,8 @@ function addHouse(B, m, fp) {
 
 function addBuilding(B, m, fp, centrality) {
   B.begin('building', new V3().setFromMatrixPosition(m));
-  try { return placeBuilding(B, m, fp, centrality); } finally { B.end(); }
+  const entry = B.open;   // nested tags don't open a new entry, so this stays the outer building
+  try { return entry.height = placeBuilding(B, m, fp, centrality); } finally { B.end(); }   // height scores a Kaiju smash
 }
 function placeBuilding(B, m, fp, centrality) {
   const tall = centrality ** 1.5, type = rand(), color = pick(PALETTE);
@@ -1492,7 +1508,7 @@ let rules = null;
 
 const $ = id => document.getElementById(id);
 const hud = { el: $('hud'), time: $('h-time'), timebox: $('h-timebox'), score: $('h-score'), town: $('h-town'),
-  dist: $('h-dist'), arrow: $('h-arrow'), lives: $('h-lives'), points: $('h-points') };
+  dist: $('h-dist'), arrow: $('h-arrow'), lives: $('h-lives'), points: $('h-points'), kpoints: $('h-kpoints') };
 const gdir = () => { const u = Math.random() * 2 - 1, t = Math.random() * 6.283, s = Math.sqrt(1 - u * u); return new V3(s * Math.cos(t), u, s * Math.sin(t)); };
 
 function loadBest(key) {
@@ -1553,7 +1569,7 @@ function openGame(kind) {
   G.kind = kind; G.active = true; G.running = false;
   resetPlane();
   parcel.visible = kind === 'courier';
-  player.visible = true; mode = 'game'; target = player; controls.enabled = false;
+  player.visible = !rules.walks; mode = 'game'; target = rules.chaseTarget ?? player; controls.enabled = false;
   $('ui').hidden = true; $('game-buttons').hidden = true; document.querySelector('h1').hidden = true;
   hud.el.hidden = true; hud.el.dataset.game = kind;
   panel(rules.title, rules.intro, 'Start!');
@@ -1578,12 +1594,13 @@ function quitGame() {
 }
 $('play').onclick = () => openGame('courier');
 $('play-raid').onclick = () => openGame('raid');
+$('play-kaiju').onclick = () => openGame('kaiju');
 $('p-go').onclick = startRun;
 $('p-back').onclick = quitGame;
 $('h-quit').onclick = quitGame;
 
 const KEYMAP = { ArrowLeft: 'left', a: 'left', A: 'left', ArrowRight: 'right', d: 'right', D: 'right',
-  ArrowUp: 'up', w: 'up', W: 'up', ArrowDown: 'down', s: 'down', S: 'down', ' ': 'fire', b: 'bomb', B: 'bomb' };
+  ArrowUp: 'up', w: 'up', W: 'up', ArrowDown: 'down', s: 'down', S: 'down', ' ': 'fire', b: 'bomb', B: 'bomb', f: 'swipe', F: 'swipe' };
 addEventListener('keydown', e => {
   if (!G.active) return;
   if (KEYMAP[e.key]) { G.keys.add(KEYMAP[e.key]); e.preventDefault(); }
@@ -1595,6 +1612,7 @@ addEventListener('blur', () => G.keys.clear());
 // --- Touch layer: joystick (#tjoy) + fire button (#tfire). Feeds the same G.keys set
 // KEYMAP populates above, so gameStep()/raid's fire step don't need to know the input source.
 const touchEl = $('touch'), joystick = $('tjoy'), joyKnob = $('tjoy-knob'), fireBtn = $('tfire'), bombBtn = $('tbomb');
+const stompBtn = $('tstomp'), swipeBtn = $('tswipe');
 let touchForceShow = false;
 const STICK_DEADZONE = 0.3;
 function setStickKeys(x, y) {
@@ -1603,6 +1621,7 @@ function setStickKeys(x, y) {
   set('up', y > STICK_DEADZONE); set('down', y < -STICK_DEADZONE);
 }
 function setFireKey(pressed) { pressed ? G.keys.add('fire') : G.keys.delete('fire'); }
+function setSwipeKey(pressed) { pressed ? G.keys.add('swipe') : G.keys.delete('swipe'); }
 function setBombKey(pressed) { pressed ? G.keys.add('bomb') : G.keys.delete('bomb'); }
 function updateTouchVisibility() {
   const coarse = window.matchMedia('(pointer: coarse)').matches;
@@ -1610,6 +1629,7 @@ function updateTouchVisibility() {
   touchEl.hidden = !show;
   fireBtn.hidden = !(show && G.kind === 'raid');
   bombBtn.hidden = fireBtn.hidden;
+  stompBtn.hidden = swipeBtn.hidden = !(show && G.kind === 'kaiju');
 }
 
 let joyTouchId = null, joyStartX = 0, joyStartY = 0;
@@ -1642,19 +1662,25 @@ fireBtn.addEventListener('touchcancel', () => setFireKey(false));
 bombBtn.addEventListener('touchstart', e => { setBombKey(true); e.preventDefault(); }, { passive: false });
 bombBtn.addEventListener('touchend', e => { setBombKey(false); e.preventDefault(); });
 bombBtn.addEventListener('touchcancel', () => setBombKey(false));
+stompBtn.addEventListener('touchstart', e => { setFireKey(true); e.preventDefault(); }, { passive: false });
+stompBtn.addEventListener('touchend', e => { setFireKey(false); e.preventDefault(); });
+stompBtn.addEventListener('touchcancel', () => setFireKey(false));
+swipeBtn.addEventListener('touchstart', e => { setSwipeKey(true); e.preventDefault(); }, { passive: false });
+swipeBtn.addEventListener('touchend', e => { setSwipeKey(false); e.preventDefault(); });
+swipeBtn.addEventListener('touchcancel', () => setSwipeKey(false));
 
 function gameStep(dt, t) {
   const k = G.keys;
   const turn = (k.has('right') ? 1 : 0) - (k.has('left') ? 1 : 0);
   const climb = (k.has('up') ? 1 : 0) - (k.has('down') ? 1 : 0);
-  if (G.running) {
+  if (G.running && !rules.walks) {
     G.f.applyAxisAngle(G.p, -turn * TURN * dt);                 // negative angle about "up" = clockwise from above
     advance(G.p, G.f, SPEED * dt, G.alt);
     G.alt = clamp(G.alt + climb * CLIMB * dt, skyFloor(G.p), CEIL);
   }
   G.bank += (turn * 0.55 - G.bank) * Math.min(1, dt * 5);
   syncPlaneTransform();
-  playerBody.userData.prop.rotation.z += dt * 40;
+  if (!rules.walks) playerBody.userData.prop.rotation.z += dt * 40;
   rules.step(dt, t);
 }
 
@@ -2042,7 +2068,147 @@ GAMES.raid = {
     panel('Game over', `Score ${G.score}. You reached wave ${raidWave}. Best ${this.best}.`, 'Play again');
   },
 };
+
+// ---------- Kaiju (see docs/specs/kaiju.md) ----------
+// A giant on foot: it walks the terrain, stomps and swipes scenery and traffic away. Smashed
+// things go through world.destroy()/restoreAll(), the same path Sky Raid's bombs use.
+const KAIJU = {
+  scalezor: { name: 'Scalezor', speed: 1.0, swipe: { reach: 1.0, half: 1.2, dir: -1 } },   // tail: wide arc behind
+};
+const WALK = 0.7, KAIJU_TURN = 1.4, STOMP_AT = 0.5, STOMP_R = 0.5, SHALLOW = 0.3, LOW_PLANE = 1.5;
+const STOMP_GAP = 0.4, SWIPE_GAP = 0.6, KAIJU_BURSTS = 3;
+const SMASH = { house: 5, tree: 1, car: 5, plane: 40 };
+
+// Scalezor: green lizard, orange back plates. +Z is forward, the tail trails behind.
+function makeScalezor() {
+  const g = new THREE.Group(), body = toon('#5cc96b'), belly = toon('#d6f5a8'), plate = toon('#ff9f43');
+  const part = (geo, mat, x, y, z, w = 0.03) => { const m = inked(geo, mat, w); m.position.set(x, y, z); g.add(m); return m; };
+  const legs = [-0.24, 0.24].map(x => {
+    const pivot = new THREE.Group(); pivot.position.set(x, 0.75, 0); g.add(pivot);
+    const leg = inked(new THREE.BoxGeometry(0.3, 0.75, 0.34).translate(0, -0.375, 0), body, 0.03); pivot.add(leg);
+    const foot = inked(new THREE.BoxGeometry(0.34, 0.1, 0.5).translate(0, -0.7, 0.08), plate, 0.02); pivot.add(foot);
+    return pivot;
+  });
+  part(new THREE.BoxGeometry(0.85, 0.85, 1.15), body, 0, 1.2, 0);
+  part(new THREE.BoxGeometry(0.6, 0.5, 0.9), belly, 0, 1.05, 0.12, 0.02);
+  const head = part(new THREE.BoxGeometry(0.55, 0.5, 0.55), body, 0, 1.55, 0.75);
+  part(new THREE.BoxGeometry(0.4, 0.22, 0.45), body, 0, 1.45, 1.1, 0.02);
+  part(new THREE.BoxGeometry(0.1, 0.1, 0.06), toon('#ffffff'), -0.18, 1.7, 1.02, 0.01);
+  part(new THREE.BoxGeometry(0.1, 0.1, 0.06), toon('#ffffff'), 0.18, 1.7, 1.02, 0.01);
+  for (let i = 0; i < 5; i++) part(new THREE.ConeGeometry(0.17 - i * 0.015, 0.34, 4), plate, 0, 1.82 - i * 0.04, 0.45 - i * 0.28, 0.02);
+  const tail = [];
+  for (let i = 0; i < 3; i++) {
+    const w = 0.55 - i * 0.15;
+    tail.push(part(new THREE.BoxGeometry(w, w, 0.6), body, 0, 1.0 - i * 0.12, -0.85 - i * 0.55));
+  }
+  part(new THREE.ConeGeometry(0.16, 0.4, 4).rotateX(-Math.PI / 2), plate, 0, 0.78, -2.6, 0.02);
+  g.userData.legs = legs; g.userData.tail = tail; g.userData.head = head;
+  g.userData.chase = { off: new V3(0, 3.8, -5.5), look: new V3(0, 1, 1.5) };   // behind and above, looking past the head
+  g.visible = false; scene.add(g);
+  return g;
+}
+const kaijuMesh = makeScalezor();
+let kaijuRun = null, kaijuClock = 0, stompWait = 0, swipeWait = 0, gait = 0;
+const _kp = new V3(), _kf = new V3(), _kc = new V3(), _kv = new V3(), _km = new THREE.Matrix4();
+
+const smashPoints = e => e.kind === 'building' ? Math.round(10 * (e.height ?? 1)) : SMASH[e.kind] ?? 1;
+function smashAt(pos, bursts) {
+  if (bursts.n++ < KAIJU_BURSTS) burst(_kv.copy(pos).addScaledVector(_kc.copy(pos).normalize(), 0.3), 'boom');
+}
+// Wrecks scenery and traffic where `inside(dir, dist)` says so; returns how many things went.
+// `dir` is the unit direction of the thing from the planet's centre.
+function smash(inside, planes) {
+  const bursts = { n: 0 };
+  let n = 0;
+  if (!planes) for (const e of world.entries) {   // planes only: the traffic pass below
+    if (e.destroyed) continue;
+    const len = e.pos.length();
+    if (!inside(_kc.copy(e.pos).divideScalar(len))) continue;
+    world.destroy(e); G.score += smashPoints(e); n++;
+    if (e.kind !== 'tree') smashAt(e.pos, bursts);
+  }
+  for (const c of civilians) {
+    if (!c.alive || c.kind === 'boat' || (c.kind === 'plane') !== planes) continue;   // cars on the ground pass, planes on the second
+    const at = civWorld(c, _kp);
+    if (planes && at.length() - heightAt(_kc.copy(at).normalize()) > LOW_PLANE) continue;   // only low planes
+    if (!inside(_kc.copy(at).normalize())) continue;
+    c.alive = false; setCivilianShown(c, false); c.respawnAt = kaijuClock + CIVILIAN_RESPAWN;
+    G.score += SMASH[c.kind]; n++;
+    smashAt(at, bursts);
+  }
+  if (n) hud.kpoints.textContent = G.score;
+  return n;
+}
+function stomp() {
+  // a disc STOMP_R across, centred STOMP_AT in front of the feet
+  const a = STOMP_AT / R;
+  const centre = new V3().copy(G.p).multiplyScalar(Math.cos(a)).addScaledVector(G.f, Math.sin(a));
+  const cosT = Math.cos(STOMP_R / R);
+  const hit = d => d.dot(centre) > cosT;
+  return smash(hit, false);
+}
+function swipe() {
+  const { reach, half, dir } = KAIJU[kaijuRun].swipe;
+  const sf = new V3().copy(G.f).multiplyScalar(dir), cosR = Math.cos(reach / R);
+  const arc = d => {
+    const dot = d.dot(G.p);
+    if (dot < cosR) return false;
+    _kv.copy(d).addScaledVector(G.p, -dot);
+    const len = _kv.length();
+    return len < 1e-6 || _kv.dot(sf) / len >= Math.cos(half);
+  };
+  return smash(arc, false) + smash(arc, true);
+}
+function placeKaiju() {
+  const h = heightAt(G.p);
+  _km.copy(frameAt(_kp.copy(G.p).multiplyScalar(h), G.p, G.f));
+  _km.decompose(kaijuMesh.position, kaijuMesh.quaternion, kaijuMesh.scale);
+}
+GAMES.kaiju = {
+  title: 'Kaiju', key: 'lw-kaiju-best', best: loadBest('lw-kaiju-best'), walks: true, chaseTarget: kaijuMesh,
+  intro: 'You are Scalezor, a lizard as tall as a skyscraper. Wreck the city. ' +
+    '← → turn · ↑ ↓ walk · Space stomps in front · F swipes the tail behind · Esc quits.',
+  start() {
+    kaijuRun = 'scalezor'; kaijuClock = 0; stompWait = swipeWait = gait = 0;
+    const c = CITIES[0], [t1] = tangentBasis(c.dir);   // drop it at the city's edge, facing in
+    G.p.copy(c.dir).multiplyScalar(Math.cos(c.cap)).addScaledVector(t1, Math.sin(c.cap)).normalize();
+    G.f.copy(c.dir).addScaledVector(G.p, -c.dir.dot(G.p)).normalize();
+    buildCivilians();
+    kaijuMesh.visible = true; hud.kpoints.textContent = 0;
+    placeKaiju();
+  },
+  stop() {
+    kaijuMesh.visible = false;
+    for (const c of civilians) { c.alive = true; setCivilianShown(c, true); }
+    world.restoreAll();
+  },
+  step(dt) {
+    kaijuClock += dt; stompWait -= dt; swipeWait -= dt;
+    const k = G.keys, K = KAIJU[kaijuRun];
+    let walked = 0;
+    if (G.running) {
+      const turn = (k.has('right') ? 1 : 0) - (k.has('left') ? 1 : 0), walk = (k.has('up') ? 1 : 0) - (k.has('down') ? 1 : 0);
+      G.f.applyAxisAngle(G.p, -turn * KAIJU_TURN * dt);
+      if (walk) {
+        // wading is half speed; deep sea turns it back
+        let speed = WALK * K.speed * walk * (heightAt(G.p) < R ? 0.5 : 1);
+        _kp.copy(G.p); _kf.copy(G.f);
+        advance(_kp, _kf, speed * dt, R);
+        if (heightAt(_kp) >= R - SHALLOW) { G.p.copy(_kp); G.f.copy(_kf); walked = speed; }
+      }
+      if (k.has('fire') && stompWait <= 0) { stomp(); stompWait = STOMP_GAP; }
+      if (k.has('swipe') && swipeWait <= 0) { swipe(); swipeWait = SWIPE_GAP; }
+    }
+    for (const c of civilians) if (!c.alive && kaijuClock >= c.respawnAt) { c.alive = true; setCivilianShown(c, true); }
+    gait += walked * dt * 9;
+    const [l, r] = kaijuMesh.userData.legs;
+    l.rotation.x = Math.sin(gait) * 0.6; r.rotation.x = -Math.sin(gait) * 0.6;
+    placeKaiju();
+  },
+};
+LW.kaiju = { mesh: kaijuMesh, stomp, swipe };
 LW.game = G;
+LW.camera = camera;
 LW.V3 = V3;
 LW.player = player;
 LW.SPEED = SPEED;   // expose for tests (P1 AC8: flight speed, cruise-time balance checks)
@@ -2055,8 +2221,8 @@ Object.defineProperties(LW.raid, {   // live: they change every frame
   best: { get: () => GAMES.raid.best, set: v => { GAMES.raid.best = v; } },
 });
 LW.touch = {
-  el: touchEl, joystick, fireBtn, bombBtn,
-  setStick: setStickKeys, firePress: setFireKey, bombPress: setBombKey,
+  el: touchEl, joystick, fireBtn, bombBtn, stompBtn, swipeBtn,
+  setStick: setStickKeys, firePress: setFireKey, bombPress: setBombKey, stompPress: setFireKey, swipePress: setSwipeKey,
   get forceShow() { return touchForceShow; },
   set forceShow(v) { touchForceShow = v; updateTouchVisibility(); },
 };
@@ -2271,6 +2437,10 @@ function frame(fixedDt) {
     camera.position.normalize().lerp(want.normalize(), k).setLength(len);
     camera.up.lerp(tmp2.setFromMatrixPosition(target.matrixWorld).normalize(), 1 - Math.exp(-dt * 5)).normalize();
     camera.lookAt(target.localToWorld(tmp.copy(c.look)));
+    if (mode === 'game' && G.kind === 'kaiju') {   // a kaiju is taller than the plane's floor: keep the camera above the skyline
+      const floor = skyFloor(tmp.copy(camera.position).normalize());
+      if (camera.position.length() < floor) { camera.position.setLength(floor); camera.lookAt(target.localToWorld(tmp.copy(c.look))); }
+    }
     alt = camera.position.length() - R;
   }
   camera.near = clamp(alt * 0.08, 0.01, 2);

@@ -149,6 +149,7 @@
   <div class="box kaiju">SCORE <b id="h-kpoints">0</b></div>
   <div class="box kaiju">HEALTH <span class="bar"><i id="h-hp"></i></span></div>
   <div class="box kaiju">ENERGY <span class="bar"><i id="h-en"></i></span></div>
+  <div class="box kaiju">HEAT <b id="h-heat">1</b></div>
   <div class="box target"><div id="h-arrow"></div><span id="h-town"></span><b id="h-dist"></b></div>
   <button id="h-quit">Quit</button>
 </div>
@@ -1518,7 +1519,7 @@ let rules = null;
 
 const $ = id => document.getElementById(id);
 const hud = { el: $('hud'), time: $('h-time'), timebox: $('h-timebox'), score: $('h-score'), town: $('h-town'),
-  dist: $('h-dist'), arrow: $('h-arrow'), lives: $('h-lives'), points: $('h-points'), kpoints: $('h-kpoints'), hp: $('h-hp'), en: $('h-en') };
+  dist: $('h-dist'), arrow: $('h-arrow'), lives: $('h-lives'), points: $('h-points'), kpoints: $('h-kpoints'), hp: $('h-hp'), en: $('h-en'), heat: $('h-heat') };
 const gdir = () => { const u = Math.random() * 2 - 1, t = Math.random() * 6.283, s = Math.sqrt(1 - u * u); return new V3(s * Math.cos(t), u, s * Math.sin(t)); };
 
 function loadBest(key) {
@@ -2149,6 +2150,11 @@ function smash(inside, planes) {
     world.destroy(e); G.score += smashPoints(e); n++;
     if (e.kind !== 'tree') smashAt(e.pos, bursts);
   }
+  if (!planes) for (const u of units) {   // police and tanks; jets fly too high to reach
+    if (!u.alive || u.kind === 'jet' || !inside(u.p)) continue;
+    killUnit(u); G.score += UNIT_POINTS[u.kind]; n++;
+    smashAt(_up.copy(u.p).multiplyScalar(R), bursts);
+  }
   for (const c of civilians) {
     if (!c.alive || c.kind === 'boat' || (c.kind === 'plane') !== planes) continue;   // cars on the ground pass, planes on the second
     const at = civWorld(c, _kp);
@@ -2238,6 +2244,7 @@ function eat() {
     if (c.kind === 'plane' && at.length() - heightAt(_kc.copy(at).normalize()) > LOW_PLANE) continue;
     consider(c.kind, at, () => { c.alive = false; setCivilianShown(c, false); c.respawnAt = kaijuClock + CIVILIAN_RESPAWN; });
   }
+  for (const u of units) if (u.alive && u.kind !== 'jet') consider(u.kind === 'tank' ? 'tank' : 'car', _pv.copy(u.p).multiplyScalar(R + 0.1), () => killUnit(u));
   if (!best) return false;
   best.take();
   const gain = EAT_GAINS[best.kind];
@@ -2254,12 +2261,143 @@ function roar() {
 function endKaiju() {
   G.running = false;
   recordBest();
-  panel('Flattened!', `Score ${G.score}. You lasted ${Math.round(kaijuClock)} s. Best ${GAMES.kaiju.best}.`, 'Play again');
+  panel('Flattened!', `Score ${G.score}. Heat ${maxHeat}. You lasted ${Math.round(kaijuClock)} s. Best ${GAMES.kaiju.best}.`, 'Play again');
 }
 function damage(n) {
   kHealth = Math.max(0, kHealth - n);
   if (kHealth <= 0 && G.running) endKaiju();
 }
+// ---- the army: heat comes from the score. Police first, tanks from heat 2, jets from heat 3.
+// Everything is pooled: units and shots are made once and recycled.
+const POLICE = { speed: 0.9, hold: 1.8, range: 2.5, gap: 1.6, dmg: 0.5, shot: 3.0, color: '#ffe066' };
+const TANK = { speed: 0.5, hold: 2.8, range: 3.5, gap: 3.5, dmg: 3, shot: 2.5, color: '#ff9f1c' };
+const JET = { speed: 1.8, range: 2.8, dmg: 5, shot: 3.5, color: '#ff3b3b', alt: 2.4 };
+const UNIT_POINTS = { police: 10, tank: 25 };
+const POOL = { police: 12, tank: 6, jet: 4 }, ARMY_FILL = 1.5, ARMY_RING = [3.5, 4.5], FAR = 7, HIT_CHEST = 0.7, CHEST = 0.9;
+const heatFor = score => score < 500 ? 1 : score < 1500 ? 2 : 3 + Math.floor((score - 1500) / 1500);
+const targets = h => ({ police: Math.min(12, 3 + 2 * (h - 1)), tank: h >= 2 ? Math.min(6, h) : 0, jet: h >= 3 ? Math.min(4, h - 2) : 0 });
+let heat = 1, maxHeat = 1, armyFill = 0, armyAuto = true;
+
+function makePolice() {
+  const g = new THREE.Group(), add = (geo, c, x, y, z) => { const m = inked(geo, toon(c), 0.01); m.position.set(x, y, z); g.add(m); };
+  add(new THREE.BoxGeometry(0.12, 0.05, 0.26), '#2a4d9b', 0, 0.05, 0);
+  add(new THREE.BoxGeometry(0.1, 0.04, 0.12), '#ffffff', 0, 0.095, -0.01);
+  add(new THREE.BoxGeometry(0.08, 0.025, 0.03), '#e8263b', 0, 0.13, -0.01);
+  return g;
+}
+function makeTank() {
+  const g = new THREE.Group(), add = (geo, c, x, y, z) => { const m = inked(geo, toon(c), 0.012); m.position.set(x, y, z); g.add(m); };
+  add(new THREE.BoxGeometry(0.22, 0.07, 0.36), '#6b7f3a', 0, 0.05, 0);
+  add(new THREE.BoxGeometry(0.14, 0.06, 0.16), '#7d9446', 0, 0.115, -0.02);
+  add(new THREE.BoxGeometry(0.03, 0.03, 0.26), '#4f5e2a', 0, 0.12, 0.2);
+  return g;
+}
+const units = [];
+for (const [kind, n] of Object.entries(POOL)) for (let i = 0; i < n; i++) {
+  const mesh = kind === 'police' ? makePolice() : kind === 'tank' ? makeTank() : makePlane('#6b7a99');
+  mesh.visible = false; scene.add(mesh);
+  units.push({ kind, mesh, p: new V3(), f: new V3(), alive: false, fireWait: 0, age: 0, fired: false });
+}
+const unitShots = new THREE.InstancedMesh(new THREE.BoxGeometry(0.06, 0.06, 0.3), new THREE.MeshBasicMaterial({ color: '#ffffff' }), 40);
+unitShots.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+unitShots.frustumCulled = false; unitShots.visible = false; scene.add(unitShots);
+const armyShots = Array.from({ length: unitShots.count }, (_, i) => {
+  unitShots.setColorAt(i, new THREE.Color('#ffffff'));
+  return { pos: new V3(), vel: new V3(), life: 0, dmg: 0 };
+});
+const _up = new V3(), _ad = new V3(), _ac = new V3(), _aq = new THREE.Quaternion(), _Z = new V3(0, 0, 1), _ONE = new V3(1, 1, 1);
+
+function killUnit(u) { u.alive = false; u.mesh.visible = false; }
+function clearArmy() {
+  for (const u of units) killUnit(u);
+  armyShots.forEach((s, i) => { s.life = 0; unitShots.setMatrixAt(i, _ZERO); });
+  unitShots.instanceMatrix.needsUpdate = true;
+}
+const chest = out => out.copy(G.p).multiplyScalar(CHEST).add(kaijuMesh.position);
+function fireShot(from, spec, dmg) {
+  const i = armyShots.findIndex(s => s.life <= 0);
+  if (i < 0) return;
+  const s = armyShots[i], d = chest(_ac).sub(from).length();
+  s.pos.copy(from); s.vel.copy(chest(_ac)).sub(from).setLength(spec.shot); s.life = d / spec.shot + 0.6; s.dmg = dmg;
+  unitShots.setColorAt(i, _aq0.set(spec.color)); unitShots.instanceColor.needsUpdate = true;
+}
+const _aq0 = new THREE.Color();
+// A point `dist` from the kaiju on a bearing (radians from its heading), on the surface.
+function around(bearing, dist, out) {
+  _ad.copy(G.f).applyAxisAngle(G.p, bearing);
+  return out.copy(G.p).applyAxisAngle(_ac.crossVectors(G.p, _ad).normalize(), dist / R);
+}
+function spawnUnit(kind) {
+  const u = units.find(x => x.kind === kind && !x.alive);
+  if (!u) return null;
+  u.alive = true; u.age = 0; u.fired = false; u.fireWait = 0.5 + Math.random();
+  for (let tries = 0; tries < 8; tries++) {   // ground units need land; jets don't
+    const dist = ARMY_RING[0] + Math.random() * (ARMY_RING[1] - ARMY_RING[0]);
+    around(Math.random() * 6.283, dist, u.p);
+    if (kind === 'jet' || heightAt(u.p) >= R + 0.02) break;
+  }
+  u.f.copy(G.p).addScaledVector(u.p, -G.p.dot(u.p)).normalize();
+  if (kind === 'jet') u.f.applyAxisAngle(u.p, (Math.random() - 0.5) * 0.16);   // a pass, not a collision course
+  u.mesh.visible = true;
+  return u;
+}
+function stepArmy(dt) {
+  const h = heatFor(G.score);
+  if (h > heat) armyFill = 0;
+  heat = h; maxHeat = Math.max(maxHeat, h);
+  hud.heat.textContent = h;
+  if (armyAuto && (armyFill -= dt) <= 0) {
+    armyFill = ARMY_FILL;
+    const want = targets(h);
+    for (const kind in want) if (units.filter(u => u.alive && u.kind === kind).length < want[kind]) spawnUnit(kind);
+  }
+  const quiet = armyQuiet > 0, gapScale = 1 / (1 + 0.25 * (h - 1));
+  for (const u of units) {
+    if (!u.alive) continue;
+    u.age += dt; u.fireWait -= dt;
+    const dist = Math.acos(clamp(u.p.dot(G.p), -1, 1)) * R;
+    if (u.kind === 'jet') {
+      const alt = Math.max(skyFloor(u.p), heightAt(G.p) + JET.alt);
+      advance(u.p, u.f, JET.speed * dt, alt);
+      if (!u.fired && !quiet && dist < JET.range) {
+        fireShot(_up.copy(u.p).multiplyScalar(alt), JET, JET.dmg); u.fired = true;
+      }
+      if (u.age > 1 && dist > FAR - 2.5) { killUnit(u); continue; }   // the pass is over
+      u.mesh.position.copy(u.p).multiplyScalar(alt);
+      _km.copy(frameAt(u.mesh.position, u.p, u.f)).decompose(u.mesh.position, u.mesh.quaternion, u.mesh.scale);
+      u.mesh.userData.prop.rotation.z += dt * 40;
+      continue;
+    }
+    if (dist > FAR) { killUnit(u); continue; }
+    const spec = u.kind === 'police' ? POLICE : TANK;
+    _ad.copy(G.p).addScaledVector(u.p, -G.p.dot(u.p));
+    if (_ad.lengthSq() > 1e-10) u.f.copy(_ad).normalize();
+    if (dist > spec.hold) {
+      _kp.copy(u.p); _kf.copy(u.f);
+      advance(u.p, u.f, spec.speed * dt, R);
+      if (heightAt(u.p) < R + 0.02) { u.p.copy(_kp); u.f.copy(_kf); }   // the sea stops them
+    }
+    if (!quiet && dist < spec.range && u.fireWait <= 0) {
+      const dmg = u.kind === 'tank' ? spec.dmg * (KAIJU[kaijuRun].tankDamage ?? 1) : spec.dmg;
+      fireShot(_up.copy(u.p).multiplyScalar(R + 0.1), spec, dmg);
+      u.fireWait = spec.gap * gapScale;
+    }
+    _km.copy(frameAt(_up.copy(u.p).multiplyScalar(heightAt(u.p)), u.p, u.f)).decompose(u.mesh.position, u.mesh.quaternion, u.mesh.scale);
+  }
+  armyShots.forEach((s, i) => {
+    if (s.life <= 0) return;
+    s.life -= dt; s.pos.addScaledVector(s.vel, dt);
+    if (chest(_ac).distanceTo(s.pos) < HIT_CHEST) {
+      s.life = 0; damage(s.dmg);
+      if (s.dmg > 1) burst(s.pos, 'boom');
+    }
+    if (s.life <= 0) { unitShots.setMatrixAt(i, _ZERO); return; }
+    _aq.setFromUnitVectors(_Z, _ad.copy(s.vel).normalize());
+    unitShots.setMatrixAt(i, _pm.compose(s.pos, _aq, _ONE));
+  });
+  unitShots.instanceMatrix.needsUpdate = true;
+}
+
 function placeKaiju() {
   const h = heightAt(G.p);
   _km.copy(frameAt(_kp.copy(G.p).multiplyScalar(h), G.p, G.f));
@@ -2272,7 +2410,8 @@ GAMES.kaiju = {
   start() {
     kaijuRun = 'scalezor'; kaijuClock = 0; stompWait = swipeWait = eatWait = roarWait = gait = 0;
     kHealth = KAIJU[kaijuRun].health; kEnergy = 100; armyQuiet = roarFear = 0;
-    peopleMesh.visible = true; people.forEach(spawnPerson);
+    peopleMesh.visible = unitShots.visible = true; people.forEach(spawnPerson);
+    heat = maxHeat = 1; armyFill = ARMY_FILL; armyAuto = true; clearArmy();
     const c = CITIES[0], [t1] = tangentBasis(c.dir);   // drop it at the city's edge, facing in
     G.p.copy(c.dir).multiplyScalar(Math.cos(c.cap)).addScaledVector(t1, Math.sin(c.cap)).normalize();
     G.f.copy(c.dir).addScaledVector(G.p, -c.dir.dot(G.p)).normalize();
@@ -2281,7 +2420,7 @@ GAMES.kaiju = {
     placeKaiju();
   },
   stop() {
-    kaijuMesh.visible = peopleMesh.visible = false;
+    kaijuMesh.visible = peopleMesh.visible = unitShots.visible = false; clearArmy();
     for (const c of civilians) { c.alive = true; setCivilianShown(c, true); }
     world.restoreAll();
   },
@@ -2306,6 +2445,7 @@ GAMES.kaiju = {
       kEnergy = Math.max(0, kEnergy - dt);   // the body burns 1 a second; at 0 it burns health
       if (kEnergy <= 0) damage(STARVING * dt);
     }
+    if (G.running) stepArmy(dt);
     stepPeople(dt, kaijuClock);
     for (const c of civilians) if (!c.alive && kaijuClock >= c.respawnAt) { c.alive = true; setCivilianShown(c, true); }
     gait += walked * dt * 9;
@@ -2315,12 +2455,16 @@ GAMES.kaiju = {
     hud.hp.style.width = 100 * kHealth / KAIJU[kaijuRun].health + '%'; hud.en.style.width = kEnergy + '%';
   },
 };
-LW.kaiju = { mesh: kaijuMesh, peopleMesh, people, stomp, swipe, eat, roar, damage };
+LW.kaiju = { mesh: kaijuMesh, peopleMesh, people, stomp, swipe, eat, roar, damage,
+  heatFor, army: { units, shots: armyShots, spawn: spawnUnit } };
+Object.defineProperties(LW.kaiju.army, { auto: { get: () => armyAuto, set: v => { armyAuto = v; } } });
 Object.defineProperties(LW.kaiju, {   // live: they change every frame
   health: { get: () => kHealth, set: v => { kHealth = v; } },
   energy: { get: () => kEnergy, set: v => { kEnergy = v; } },
   roarWait: { get: () => roarWait },
   armyQuiet: { get: () => armyQuiet },
+  heat: { get: () => heat },
+  maxHeat: { get: () => maxHeat },
   best: { get: () => GAMES.kaiju.best },
 });
 LW.game = G;

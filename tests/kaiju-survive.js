@@ -8,7 +8,7 @@
   const $ = id => document.getElementById(id);
   const step = (LW, s) => { for (let i = 0; i < Math.round(s * 60); i++) LW.frame(1 / 60); };
   const near = (a, b, tol, what) => { if (Math.abs(a - b) > tol) throw new Error(`${what}: got ${a.toFixed(3)}, expected ${b}`); };
-  const begin = LW => { $('play-kaiju').click(); $('p-go').click(); step(LW, 1 / 60); return LW.kaiju; };
+  const begin = LW => { $('play-kaiju').click(); $('p-go').click(); LW.kaiju.army.auto = false; step(LW, 1 / 60); return LW.kaiju; };   // no army: these checks are about the body
   // A point `dist` from the kaiju along its heading (or sideways).
   function ahead(LW, dist, turn = 0) {
     const G = LW.game, V = LW.V3;

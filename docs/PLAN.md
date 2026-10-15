@@ -59,7 +59,7 @@ Epics are grouped by game, not by order; the milestone tag on each sprint says w
 ### Sprint P2: fill it and make it breakable
 - [x] More hamlets, trees, boats, planes, balloons, satellites, clouds by area (spec rules).
   Trees go through `forestNoise`, already scaled by NZ.
-- [ ] Destructible scenery: per-building, house, tree ranges in the batches; destroy and restore (AC 6)
+- [x] Destructible scenery: per-building, house, tree ranges in the batches; destroy and restore (AC 6)
 - [ ] Frame-cost check at full view (AC 7). Replace the two record-only checks in
   `tests/frame-cost.js` (they always pass). From the start view: assert desktop High under
   16 ms and phone emulation Low under 33 ms. Time whole frames, GPU included (rAF-timed run,

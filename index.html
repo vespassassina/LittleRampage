@@ -368,26 +368,54 @@ function inked(geo, mat, maxW = 0.03) {
 // switch can drop thin outlines (e.g. tree trunks) under a size threshold in low mode.
 const ALL_INK_MESHES = [];
 class Batch {
-  constructor() { this.byMat = new Map(); this.byInk = new Map(); }
+  constructor() { this.byMat = new Map(); this.byInk = new Map(); this.entries = []; this.open = null; this.depth = 0; }
+  // begin()/end() tag everything added in between as one destructible thing. They nest
+  // (a building can be a house); the outermost tag wins.
+  begin(kind) { if (this.depth++ === 0) { this.open = { kind, parts: [], ranges: [], destroyed: false, saved: null }; this.entries.push(this.open); } }
+  end() { if (--this.depth === 0) this.open = null; }
   add(geo, mat, matrix, maxW = 0.03) {
     const g = geo.index ? geo.toNonIndexed() : geo.clone();
     for (const k of Object.keys(g.attributes)) if (!['position', 'normal', 'uv'].includes(k)) g.deleteAttribute(k);
     if (!this.byMat.has(mat)) this.byMat.set(mat, []);
     this.byMat.get(mat).push(g.applyMatrix4(matrix));
+    if (this.open) this.open.parts.push(g);
     if (maxW) {
       if (!this.byInk.has(maxW)) this.byInk.set(maxW, []);
-      this.byInk.get(maxW).push(hullGeo(geo).toNonIndexed().applyMatrix4(matrix));
+      const h = hullGeo(geo).toNonIndexed().applyMatrix4(matrix);
+      this.byInk.get(maxW).push(h);
+      if (this.open) this.open.parts.push(h);
     }
   }
   // Empties the batch after merging, so it can be filled and built again.
   build(parent) {
-    for (const [mat, geos] of this.byMat) parent.add(new THREE.Mesh(mergeGeometries(geos), mat));
-    for (const [w, geos] of this.byInk) {
-      const m = new THREE.Mesh(mergeGeometries(geos), ink(w));
+    // merged geometry is the parts back to back, so a part's vertex range is its running offset
+    const where = new Map();
+    const merge = (geos, mat) => {
+      const m = new THREE.Mesh(mergeGeometries(geos), mat);
+      let start = 0;
+      for (const g of geos) { const count = g.attributes.position.count; where.set(g, { mesh: m, start, count }); start += count; }
       parent.add(m);
-      ALL_INK_MESHES.push({ mesh: m, w });
-    }
+      return m;
+    };
+    for (const [mat, geos] of this.byMat) merge(geos, mat);
+    for (const [w, geos] of this.byInk) ALL_INK_MESHES.push({ mesh: merge(geos, ink(w)), w });
+    for (const e of this.entries) { e.ranges = e.parts.map(g => where.get(g)); e.parts = null; }
     this.byMat.clear(); this.byInk.clear();
+  }
+  // Hides one tagged thing by collapsing its vertices to the planet's centre, where the
+  // terrain covers them. restore() puts the exact positions back.
+  destroy(e) {
+    if (e.destroyed) return;
+    e.saved = e.ranges.map(r => r.mesh.geometry.attributes.position.array.slice(r.start * 3, (r.start + r.count) * 3));
+    for (const r of e.ranges) { r.mesh.geometry.attributes.position.array.fill(0, r.start * 3, (r.start + r.count) * 3); r.mesh.geometry.attributes.position.needsUpdate = true; }
+    e.destroyed = true;
+  }
+  restoreAll() {
+    for (const e of this.entries) {
+      if (!e.destroyed) continue;
+      e.ranges.forEach((r, i) => { r.mesh.geometry.attributes.position.array.set(e.saved[i], r.start * 3); r.mesh.geometry.attributes.position.needsUpdate = true; });
+      e.destroyed = false; e.saved = null;
+    }
   }
 }
 // Removes what Batch.build() put in `parent` and frees it. Only for groups that hold
@@ -515,6 +543,7 @@ const PINE_TOP = new THREE.ConeGeometry(0.08, 0.2, 7).translate(0, 0.4, 0);
 const ROUND = new THREE.IcosahedronGeometry(0.13, 1).translate(0, 0.24, 0);
 
 function addTree(B, pos, up, s) {
+  B.begin('tree');
   const m = frameAt(pos, up, randomDir(), s);
   B.add(TRUNK, toon('#8b5a3c'), m, 0.012);
   if (rand() < 0.5) {
@@ -523,16 +552,23 @@ function addTree(B, pos, up, s) {
   } else {
     B.add(ROUND, toon(pick([...GREENS, '#9be15d', '#ffb347', '#ff8fab'])), m, 0.015);
   }
+  B.end();
 }
 
 function addHouse(B, m, fp) {
+  B.begin('house');
   const h = rr(0.16, 0.3), w = fp * 0.85, rh = rr(0.16, 0.26);
   B.add(windowBox(w, h, w), toon(pick(PALETTE), WIN), m, 0.02);
   const roof = new THREE.ConeGeometry(w * 0.78, rh, 4).rotateY(Math.PI / 4).translate(0, h + rh / 2, 0);
   B.add(roof, toon(pick(['#e84a5f', '#ff9f43', '#7a5cff', '#3a3f55'])), m, 0.02);
+  B.end();
 }
 
 function addBuilding(B, m, fp, centrality) {
+  B.begin('building');
+  try { return placeBuilding(B, m, fp, centrality); } finally { B.end(); }
+}
+function placeBuilding(B, m, fp, centrality) {
   const tall = centrality ** 1.5, type = rand(), color = pick(PALETTE);
   if (type < 0.5) {
     const h = rr(0.3, 0.55) + tall * rr(0.4, 1.4);
@@ -999,6 +1035,7 @@ const wakeMat = new THREE.MeshBasicMaterial({ color: '#ffffff', transparent: tru
 // first: boot. Creates the cars, trains and boats; a rebuild only moves them.
 function buildScenery(first) {
   clearBatch(sceneryGroup);
+  world.entries.length = 0;
   mills.clear(); MILLS.length = 0; HAMLETS.length = 0;
 
   CITIES.forEach(c => buildCity(c, first));
@@ -2113,6 +2150,9 @@ Object.defineProperty(LW, 'cloudCount', { get: () => cloudCount, configurable: t
 // Trains
 Object.defineProperty(LW, 'trainTrack', { get: () => trainTrack, configurable: true });   // live: a resize builds a new track (trains AC1/AC2/AC4)
 LW.scenery = { world: sceneryGroup, mills, clouds, inkMeshes: ALL_INK_MESHES };   // expose for tests (planet-size-scenery.js)
+LW.destroy = e => world.destroy(e);   // planet-v2 AC6; the Kaiju smashes through this
+LW.restoreScenery = () => world.restoreAll();
+Object.defineProperty(LW, 'sceneryEntries', { get: () => world.entries, configurable: true });   // live: a resize rebuilds them
 LW.worldBatch = world;   // expose for tests (trains AC3: rail mesh merged into batch)
 LW.ready = true;   // last thing set: tests.html polls this before running checks
 </script>

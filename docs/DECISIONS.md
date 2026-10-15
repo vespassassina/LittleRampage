@@ -3,6 +3,18 @@
 Newest first.
 
 
+
+## 2026-10-15 — Destructible scenery: tagged vertex ranges, collapsed to the centre
+
+`Batch.begin(kind)`/`end()` tag each building, house and tree; `build()` turns the tags into
+`{mesh, start, count}` ranges (merged geometry is the parts back to back). `destroy(entry)` zeroes
+those vertices, outline hulls included, and saves them; `restoreAll()` puts them back bit-exact.
+Collapsing to the origin hides them inside the planet and costs no extra draw calls or rebuild.
+Nested tags: a building that is a house stays one 'building'. No new `rand()` calls, so seeds replay
+the same world. A resize drops entries and destroyed state. API: `LW.destroy`, `LW.restoreScenery`,
+`LW.sceneryEntries` (live). At R=15: 201 buildings, 224 houses, 4121 trees. Suite 133/133; a real
+page run with 2261 entries destroyed showed the city bare and the forest thinned.
+
 ## 2026-10-15 — P2 density: counts scale with (R/10)², tree search cap raised
 
 Trees, hamlets, boats and clouds scale by `(R/10)²`; planes 8, balloons 8, satellites 8 are fixed.

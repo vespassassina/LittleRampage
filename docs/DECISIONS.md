@@ -2,6 +2,20 @@
 
 Newest first.
 
+## 2026-10-15 Kaiju K4: the roster
+
+- Start screen has a picker: Scalezor (default), Bonkers, Shellback, Random. The choice is kept for
+  the session only, and the picker comes back on the end screen.
+- Bonkers: speed 1.3, health 75, fist swipe ahead (reach 1.2, half-arc 0.5 rad), eats every 0.25 s.
+  Shellback: speed 0.7, health 150, swipe all around, tank shells do half (1.5).
+- Three bodies are built once. A run recolours them (random hue), scales them 0.9-1.1 and hides up to
+  half the spikes. Materials are private to each body: `toon()` caches by colour, so mutating one
+  would recolour every white thing in the world.
+- Balance: police gap 2.2 s (was 1.6), tank gap 5 s (was 3.5), gap shrinks 15% per heat (was 25%).
+  A kaiju standing still lasts over 60 s at heat 1 and 10-60 s at heat 4. Tested loosely, since spawns are random.
+- Frame cost: heat 4 is about 0.7 ms of CPU per frame and ~250 draw calls on every kaiju. That is
+  not the AC 10 GPU number. The real-GPU check on desktop and phone stays with the final sprint.
+
 ## 2026-10-15 Kaiju K3: heat and the army
 
 - Heat is 1 below 500, 2 below 1500, then +1 per 1500 points. Police target `min(12, 3+2(h-1))`;

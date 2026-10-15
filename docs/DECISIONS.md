@@ -4,6 +4,29 @@ Newest first.
 
 
 
+
+## 2026-10-15 — Sky Raid R2: the fight, built in the main session
+
+Subagents were unusable: the local settings map Haiku and Sonnet to `z-ai/glm-5.3-flash` and
+`z-ai/glm-5.3`, and the gateway answered model_not_found for the tester. The main session wrote the
+checks and the code, test first. Contract: `LW.raid` gains `enemyShots`, `bombs`, `civilians`, `bomb()`,
+`paramsFor(n)`, live `wave`, `invulnerable`, `best`; `LW.touch` gains `bombBtn`, `bombPress`.
+Calls where the spec was silent:
+- "fires when one is roughly ahead of you" is read as: you are within 0.35 rad of dead ahead of the
+  enemy and within 3.5 units. Enemy shots: speed 2.6, range 4, hit radius 0.3.
+- Enemies fly 1.3 to 2.0 and you fly 1.8, so a plane flying straight outruns wave 1. In a 25 s
+  straight run the gap grew from 1.8 to 11.7 and nothing fired. It is the spec's numbers; watch it in play.
+- Bombs fall straight (no forward speed), 0.35 blast, take every car and boat in range and add up their
+  points; they also destroy buildings, houses and trees for no points. Bombs never take planes.
+- Cars: hidden by a flag the car mover reads, so it keeps its place in the loop and returns after 20 s.
+- Pools: 16 enemies (waves up to 15; wave 16+ is capped at 16), 24 enemy shots, 6 bombs.
+- Training no longer ends in a panel: the last balloon starts wave 1. Game over shows score, wave, best.
+- The balloon spread was already retuned in P1 (checks pass at R=15); enemy spawn arc is 0.5 rad (~7.5).
+- `tests.html` now fetches test files with `cache: 'no-store'`: a cached `raid.js` showed a stale failure.
+Suite 149/149. Real run: wave 1 spawns, HUD arrow and label, an enemy shot fired, no console errors,
+Bomb and Fire buttons fit at 375 px. Checks were written before the code but I did not watch them
+fail first; the car-bomb check caught a real wrong assumption (two cars in one blast).
+
 ## 2026-10-15 — Destructible scenery: tagged vertex ranges, collapsed to the centre
 
 `Batch.begin(kind)`/`end()` tag each building, house and tree; `build()` turns the tags into

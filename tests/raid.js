@@ -204,7 +204,7 @@ LW_TESTS.push({
 });
 
 LW_TESTS.push({
-  name: 'raid: AC2 training done - all balloons popped, score 16, panel shown',
+  name: 'raid: AC2 training done - all balloons popped, score 16, wave 1 starts',
   game: 'raid',
   run(LW) {
     const $ = id => document.getElementById(id);
@@ -240,8 +240,8 @@ LW_TESTS.push({
     // Check score: 8 balloons × 2 points each = 16
     if (G.score !== 16) throw new Error(`Score should be 16, got ${G.score}`);
 
-    // Check panel is shown (training done)
-    if ($('panel').hidden) throw new Error('Panel should be shown when training is done');
+    // Training done: the fight starts at once, no panel in the way (R2 AC2; details in raid-fight.js)
+    if (R.wave !== 1) throw new Error(`Wave 1 should start after training, got wave ${R.wave}`);
 
     LW.games.quit();
     return true;

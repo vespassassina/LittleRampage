@@ -106,7 +106,13 @@
     display: flex; align-items: center; justify-content: center; font-size: 20px; letter-spacing: 1px;
     pointer-events: auto; touch-action: none; user-select: none; -webkit-user-select: none;
   }
-  @media (max-width: 600px) { #tjoy { width: 96px; height: 96px; } #tfire { width: 70px; height: 70px; font-size: 16px; } }
+  #tbomb {
+    position: fixed; right: 40px; bottom: 128px; width: 70px; height: 70px; border-radius: 50%;
+    background: #6bcbef; color: #fff; -webkit-text-stroke: 1px #000; border: 3px solid #000; box-shadow: 3px 3px 0 #000;
+    display: flex; align-items: center; justify-content: center; font-size: 16px; letter-spacing: 1px;
+    pointer-events: auto; touch-action: none; user-select: none; -webkit-user-select: none;
+  }
+  @media (max-width: 600px) { #tjoy { width: 96px; height: 96px; } #tfire { width: 70px; height: 70px; font-size: 16px; } #tbomb { width: 58px; height: 58px; font-size: 13px; right: 34px; bottom: 108px; } }
 </style>
 <script type="importmap">
 { "imports": {
@@ -135,6 +141,7 @@
 <div id="touch" hidden>
   <div id="tjoy"><div id="tjoy-knob"></div></div>
   <div id="tfire" hidden>FIRE</div>
+  <div id="tbomb" hidden>BOMB</div>
 </div>
 <div id="game-buttons">
   <button id="play">Play Sky Courier</button>
@@ -371,7 +378,7 @@ class Batch {
   constructor() { this.byMat = new Map(); this.byInk = new Map(); this.entries = []; this.open = null; this.depth = 0; }
   // begin()/end() tag everything added in between as one destructible thing. They nest
   // (a building can be a house); the outermost tag wins.
-  begin(kind) { if (this.depth++ === 0) { this.open = { kind, parts: [], ranges: [], destroyed: false, saved: null }; this.entries.push(this.open); } }
+  begin(kind, pos) { if (this.depth++ === 0) { this.open = { kind, pos, parts: [], ranges: [], destroyed: false, saved: null }; this.entries.push(this.open); } }
   end() { if (--this.depth === 0) this.open = null; }
   add(geo, mat, matrix, maxW = 0.03) {
     const g = geo.index ? geo.toNonIndexed() : geo.clone();
@@ -543,8 +550,8 @@ const PINE_TOP = new THREE.ConeGeometry(0.08, 0.2, 7).translate(0, 0.4, 0);
 const ROUND = new THREE.IcosahedronGeometry(0.13, 1).translate(0, 0.24, 0);
 
 function addTree(B, pos, up, s) {
-  B.begin('tree');
   const m = frameAt(pos, up, randomDir(), s);
+  B.begin('tree', pos.clone());
   B.add(TRUNK, toon('#8b5a3c'), m, 0.012);
   if (rand() < 0.5) {
     const c = toon(pick(GREENS));
@@ -556,7 +563,7 @@ function addTree(B, pos, up, s) {
 }
 
 function addHouse(B, m, fp) {
-  B.begin('house');
+  B.begin('house', new V3().setFromMatrixPosition(m));
   const h = rr(0.16, 0.3), w = fp * 0.85, rh = rr(0.16, 0.26);
   B.add(windowBox(w, h, w), toon(pick(PALETTE), WIN), m, 0.02);
   const roof = new THREE.ConeGeometry(w * 0.78, rh, 4).rotateY(Math.PI / 4).translate(0, h + rh / 2, 0);
@@ -565,7 +572,7 @@ function addHouse(B, m, fp) {
 }
 
 function addBuilding(B, m, fp, centrality) {
-  B.begin('building');
+  B.begin('building', new V3().setFromMatrixPosition(m));
   try { return placeBuilding(B, m, fp, centrality); } finally { B.end(); }
 }
 function placeBuilding(B, m, fp, centrality) {
@@ -761,6 +768,7 @@ function initCarInstancing() {
   scene.add(carInstances.inkWheels.mesh);
 }
 
+const HIDDEN_CAR = new THREE.Matrix4().makeScale(0, 0, 0);
 function addCarInstance(color) {
   if (carInstances.bodies.count >= MAX_CARS) {
     throw new Error(`addCarInstance: car pool full (MAX_CARS = ${MAX_CARS}). Raise MAX_CARS or spawn fewer cars.`);
@@ -986,10 +994,11 @@ function buildCity(c, spawnTraffic) {
         // c.map and c.top are read live: layoutCities() replaces them on a resize.
         const [x, z] = loop.at(s), [x2, z2] = loop.at(s + 0.04);
         const up = c.map(x, z), pos = up.clone().multiplyScalar(c.top);
-        const mat = frameAt(pos, up, c.map(x2, z2).multiplyScalar(c.top).sub(pos));
+        const real = frameAt(pos, up, c.map(x2, z2).multiplyScalar(c.top).sub(pos));
+        const mat = carDesc.hidden ? HIDDEN_CAR : real;   // a bombed car keeps driving, unseen, and returns
 
         // Keep the phantom chase-camera Object3D in sync with the instance transform.
-        mat.decompose(carDesc.position, carDesc.quaternion, carDesc.scale);
+        real.decompose(carDesc.position, carDesc.quaternion, carDesc.scale);
 
         // Update instance matrices for all car parts
         carInstances.bodies.mesh.setMatrixAt(carDesc.bodyIndex, mat);
@@ -1574,7 +1583,7 @@ $('p-back').onclick = quitGame;
 $('h-quit').onclick = quitGame;
 
 const KEYMAP = { ArrowLeft: 'left', a: 'left', A: 'left', ArrowRight: 'right', d: 'right', D: 'right',
-  ArrowUp: 'up', w: 'up', W: 'up', ArrowDown: 'down', s: 'down', S: 'down', ' ': 'fire' };
+  ArrowUp: 'up', w: 'up', W: 'up', ArrowDown: 'down', s: 'down', S: 'down', ' ': 'fire', b: 'bomb', B: 'bomb' };
 addEventListener('keydown', e => {
   if (!G.active) return;
   if (KEYMAP[e.key]) { G.keys.add(KEYMAP[e.key]); e.preventDefault(); }
@@ -1585,7 +1594,7 @@ addEventListener('blur', () => G.keys.clear());
 
 // --- Touch layer: joystick (#tjoy) + fire button (#tfire). Feeds the same G.keys set
 // KEYMAP populates above, so gameStep()/raid's fire step don't need to know the input source.
-const touchEl = $('touch'), joystick = $('tjoy'), joyKnob = $('tjoy-knob'), fireBtn = $('tfire');
+const touchEl = $('touch'), joystick = $('tjoy'), joyKnob = $('tjoy-knob'), fireBtn = $('tfire'), bombBtn = $('tbomb');
 let touchForceShow = false;
 const STICK_DEADZONE = 0.3;
 function setStickKeys(x, y) {
@@ -1594,11 +1603,13 @@ function setStickKeys(x, y) {
   set('up', y > STICK_DEADZONE); set('down', y < -STICK_DEADZONE);
 }
 function setFireKey(pressed) { pressed ? G.keys.add('fire') : G.keys.delete('fire'); }
+function setBombKey(pressed) { pressed ? G.keys.add('bomb') : G.keys.delete('bomb'); }
 function updateTouchVisibility() {
   const coarse = window.matchMedia('(pointer: coarse)').matches;
   const show = (coarse || touchForceShow) && G.active && G.running;
   touchEl.hidden = !show;
   fireBtn.hidden = !(show && G.kind === 'raid');
+  bombBtn.hidden = fireBtn.hidden;
 }
 
 let joyTouchId = null, joyStartX = 0, joyStartY = 0;
@@ -1628,6 +1639,9 @@ joystick.addEventListener('touchcancel', endJoyTouch);
 fireBtn.addEventListener('touchstart', e => { setFireKey(true); e.preventDefault(); }, { passive: false });
 fireBtn.addEventListener('touchend', e => { setFireKey(false); e.preventDefault(); });
 fireBtn.addEventListener('touchcancel', () => setFireKey(false));
+bombBtn.addEventListener('touchstart', e => { setBombKey(true); e.preventDefault(); }, { passive: false });
+bombBtn.addEventListener('touchend', e => { setBombKey(false); e.preventDefault(); });
+bombBtn.addEventListener('touchcancel', () => setBombKey(false));
 
 function gameStep(dt, t) {
   const k = G.keys;
@@ -1828,7 +1842,142 @@ function nearest(list) {
   for (const x of list) { const d = x.mesh.position.distanceToSquared(player.position); if (d < bd) { bd = d; best = x; } }
   return best;
 }
-const enemies = [];
+const enemies = [];   // the ones alive now; the pool is enemyPool
+
+// ---- the fight: enemy planes, their shots, bombs, civilians (docs/specs/sky-raid.md)
+const MAX_ENEMIES = 16, MAX_BOMBS = 6, MAX_ENEMY_SHOTS = 24;   // wave n has n + 1 enemies, so the pool holds waves up to 15
+const ENEMY_SPAWN_ARC = 0.5;   // radians from the player: ~7.5 units at R=15, past the chase camera's view
+const ENEMY_SHOT_SPEED = 2.6, ENEMY_SHOT_RANGE = 4, ENEMY_HIT_R = 0.3, CRASH_R = 0.3;
+const FIRE_CONE = 0.35, FIRE_RANGE = 3.5;   // an enemy shoots when you are this close to dead ahead
+const BOMB_FALL = 4, BOMB_R = 0.35, BOMB_GAP = 0.6;
+const CIVILIAN_RESPAWN = 20, WAVE_PAUSE = 3, BLINK = 2;
+const paramsFor = n => ({ speed: Math.min(2.0, 1.2 * (1 + 0.08 * n)), fireGap: Math.max(0.9, 3 / (1 + 0.15 * n)) });
+
+const enemyPool = Array.from({ length: MAX_ENEMIES }, () => {
+  const mesh = makePlane('#e8263b'); mesh.visible = false; scene.add(mesh);
+  return { mesh, p: new V3(), f: new V3(), alt: 0, alive: false, speed: 0, fireWait: 0 };
+});
+const enemyShotMesh = new THREE.InstancedMesh(new THREE.BoxGeometry(0.1, 0.1, 0.35),
+  new THREE.MeshBasicMaterial({ color: '#ff2b2b' }), MAX_ENEMY_SHOTS);
+enemyShotMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+enemyShotMesh.frustumCulled = false; enemyShotMesh.visible = false; scene.add(enemyShotMesh);
+const enemyShots = Array.from({ length: MAX_ENEMY_SHOTS }, () => ({ p: new V3(), f: new V3(), alt: 0, life: 0 }));
+const bombMesh = new THREE.InstancedMesh(new THREE.SphereGeometry(0.07, 10, 8), new THREE.MeshBasicMaterial({ color: '#26233a' }), MAX_BOMBS);
+bombMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+bombMesh.frustumCulled = false; bombMesh.visible = false; scene.add(bombMesh);
+const bombs = Array.from({ length: MAX_BOMBS }, () => ({ p: new V3(), alt: 0, life: 0 }));
+
+// Civilians: what guns and bombs can destroy for points. They come back after CIVILIAN_RESPAWN.
+const civilians = [];
+const civWorld = (c, out) => c.kind === 'plane' ? (c.obj.updateWorldMatrix(true, false), c.obj.getWorldPosition(out)) : out.copy(c.obj.position);
+function setCivilianShown(c, shown) { if (c.kind === 'car') c.obj.hidden = !shown; else c.obj.visible = shown; }
+function buildCivilians() {
+  civilians.length = 0;
+  for (const [kind, list, points] of [['plane', vehicles.plane, 5], ['boat', vehicles.boat, 3], ['car', vehicles.car, 1]])
+    for (const obj of list) civilians.push({ kind, obj, points, alive: true, respawnAt: 0 });
+}
+
+let raidPhase = 'training', raidWave = 0, waveTimer = null, raidClock = 0, invul = 0, bombWait = 0;
+const _cw = new V3(), _er = new V3(), _ep = new V3(), _em = new THREE.Matrix4();
+
+function freeSlot(list, key) { return list.find(x => !x[key]); }
+function hurtPlayer() {
+  G.lives--; invul = BLINK;
+  burst(player.position, 'boom');
+  if (G.lives <= 0) GAMES.raid.end();
+}
+function killEnemy(e) {
+  e.alive = false; e.mesh.visible = false;
+  enemies.splice(enemies.indexOf(e), 1);
+  burst(e.mesh.position, 'boom');
+  G.score += 10;
+}
+function killCivilian(c, at) {
+  c.alive = false; setCivilianShown(c, false); c.respawnAt = raidClock + CIVILIAN_RESPAWN;
+  burst(at, 'boom');
+  G.score += c.points;
+}
+function startWave(n) {
+  raidWave = n;
+  const params = paramsFor(n), count = Math.min(n + 1, MAX_ENEMIES);
+  const [t1, t2] = tangentBasis(G.p);
+  for (let i = 0; i < count; i++) {
+    const e = freeSlot(enemyPool, 'alive'); if (!e) break;
+    const bear = Math.random() * 6.283;
+    _er.copy(t1).multiplyScalar(Math.cos(bear)).addScaledVector(t2, Math.sin(bear));   // away from the player, on the tangent plane
+    e.p.copy(G.p).multiplyScalar(Math.cos(ENEMY_SPAWN_ARC)).addScaledVector(_er, Math.sin(ENEMY_SPAWN_ARC)).normalize();
+    e.f.copy(G.p).addScaledVector(e.p, -G.p.dot(e.p)).normalize();   // facing the player
+    e.alt = clamp(G.alt + rr(-0.5, 0.5), skyFloor(e.p), CEIL);
+    e.speed = params.speed; e.fireWait = params.fireGap * (1 + Math.random());
+    e.alive = e.mesh.visible = true;
+    enemies.push(e);
+    frameAt(_ep.copy(e.p).multiplyScalar(e.alt), e.p, e.f).decompose(e.mesh.position, e.mesh.quaternion, e.mesh.scale);
+  }
+  pop(`WAVE ${n}`);
+}
+function stepEnemy(e, dt) {
+  _er.crossVectors(e.f, e.p);   // screen-right, as pointAt does
+  const err = Math.atan2(G.p.dot(_er), G.p.dot(e.f));   // > 0: you are to its right
+  e.f.applyAxisAngle(e.p, -clamp(err * 3, -1, 1) * TURN * 0.9 * dt);
+  advance(e.p, e.f, e.speed * dt, e.alt);
+  e.alt = clamp(e.alt + clamp(G.alt - e.alt, -CLIMB * dt, CLIMB * dt), skyFloor(e.p), CEIL);
+  frameAt(_ep.copy(e.p).multiplyScalar(e.alt), e.p, e.f).decompose(e.mesh.position, e.mesh.quaternion, e.mesh.scale);
+  e.mesh.userData.prop && (e.mesh.userData.prop.rotation.z += dt * 40);
+  e.fireWait -= dt;
+  if (e.fireWait <= 0 && Math.abs(err) < FIRE_CONE && e.mesh.position.distanceTo(player.position) < FIRE_RANGE) {
+    const s = freeSlot(enemyShots, 'life');
+    if (s) { s.p.copy(e.p); s.f.copy(e.f); s.alt = e.alt; s.life = ENEMY_SHOT_RANGE / ENEMY_SHOT_SPEED; }
+    e.fireWait = paramsFor(raidWave).fireGap;
+  }
+  if (invul <= 0 && e.mesh.position.distanceTo(player.position) < CRASH_R) hurtPlayer();
+}
+function dropBomb() {
+  const b = freeSlot(bombs, 'life'); if (!b) return;
+  b.p.copy(G.p); b.alt = G.alt - 0.1; b.life = 1;
+}
+function explodeBomb(b) {
+  const ground = Math.max(heightAt(b.p), R);
+  const at = b.p.clone().multiplyScalar(Math.max(b.alt, ground));
+  burst(at, 'boom');
+  for (const c of civilians) if (c.alive && c.kind !== 'plane' && civWorld(c, _cw).distanceTo(at) < BOMB_R) killCivilian(c, _cw);
+  for (const e of world.entries) if (!e.destroyed && e.pos.distanceTo(at) < BOMB_R) world.destroy(e);   // buildings, houses and trees: no points
+}
+const _bm = new THREE.Matrix4();
+function stepRaidFight(dt) {
+  raidClock += dt; invul = Math.max(0, invul - dt); bombWait -= dt;
+  player.visible = invul <= 0 || ((invul * 8) | 0) % 2 === 0;   // blinks while safe
+
+  if (G.running && G.keys.has('bomb') && bombWait <= 0) { dropBomb(); bombWait = BOMB_GAP; }
+  bombs.forEach((b, i) => {
+    if (b.life > 0) {
+      b.alt -= BOMB_FALL * dt;
+      if (b.alt <= Math.max(heightAt(b.p), R)) { b.life = 0; explodeBomb(b); }
+    }
+    if (b.life > 0) { _cw.copy(b.p).multiplyScalar(b.alt); _bm.makeTranslation(_cw.x, _cw.y, _cw.z); } else _bm.makeScale(0, 0, 0);
+    bombMesh.setMatrixAt(i, _bm);
+  });
+  bombMesh.instanceMatrix.needsUpdate = true;
+
+  for (const c of civilians) if (!c.alive && raidClock >= c.respawnAt) { c.alive = true; setCivilianShown(c, true); }
+
+  if (G.running && raidPhase === 'fight') {
+    for (const e of [...enemies]) stepEnemy(e, dt);
+    if (!enemies.length && G.running) {
+      if (waveTimer === null) waveTimer = WAVE_PAUSE;
+      else if ((waveTimer -= dt) <= 0) { waveTimer = null; startWave(raidWave + 1); }
+    }
+  }
+  enemyShots.forEach((s, i) => {
+    if (s.life > 0) {
+      s.life -= dt;
+      advance(s.p, s.f, ENEMY_SHOT_SPEED * dt, s.alt);
+      if (G.running && shotWorld(s, _cw).distanceTo(player.position) < ENEMY_HIT_R) { s.life = 0; if (invul <= 0) hurtPlayer(); }
+    }
+    if (s.life > 0) _bm.copy(frameAt(shotWorld(s, _cw), s.p, s.f)); else _bm.makeScale(0, 0, 0);
+    enemyShotMesh.setMatrixAt(i, _bm);
+  });
+  enemyShotMesh.instanceMatrix.needsUpdate = true;
+}
 
 GAMES.raid = {
   title: 'Sky Raid', key: 'lw-sky-raid-best', best: loadBest('lw-sky-raid-best'),
@@ -1836,14 +1985,21 @@ GAMES.raid = {
     '← → steer · ↑ ↓ climb and dive · Esc quits.',
   start() {
     G.lives = 3; fireWait = 0;
+    raidPhase = 'training'; raidWave = 0; waveTimer = null; raidClock = 0; invul = 0; bombWait = 0;
     shots.forEach(s => s.life = 0);
-    shotMesh.visible = true;
+    shotMesh.visible = enemyShotMesh.visible = bombMesh.visible = true;
+    buildCivilians();
     placeBalloons();
   },
   stop() {
-    shots.forEach(s => s.life = 0);
-    shotMesh.visible = false;
+    shots.forEach(s => s.life = 0); enemyShots.forEach(s => s.life = 0); bombs.forEach(b => b.life = 0);
+    shotMesh.visible = enemyShotMesh.visible = bombMesh.visible = false;
     balloons.forEach(b => b.alive = b.mesh.visible = false);
+    for (const e of enemies) e.alive = e.mesh.visible = false;
+    enemies.length = 0;
+    for (const c of civilians) { c.alive = true; setCivilianShown(c, true); }   // everything destroyed comes back
+    world.restoreAll();
+    raidPhase = 'training'; raidWave = 0; invul = 0;
   },
   step(dt, t) {
     fireWait -= dt;
@@ -1860,6 +2016,8 @@ GAMES.raid = {
           burst(b.mesh.position, 'pop');
           G.score += 2;
         }
+        for (const e of [...enemies]) if (s.life > 0 && e.mesh.position.distanceTo(_pos) < HIT_R) { s.life = 0; killEnemy(e); }
+        for (const c of civilians) if (s.life > 0 && c.alive && c.kind === 'plane' && civWorld(c, _cw).distanceTo(_pos) < HIT_R) { s.life = 0; killCivilian(c, _cw); }
       }
       if (s.life > 0) m.copy(frameAt(shotWorld(s, _pos), s.p, s.f));
       else m.makeScale(0, 0, 0);
@@ -1871,18 +2029,17 @@ GAMES.raid = {
       b.mesh.position.copy(b.base).addScaledVector(b.dir, Math.sin(t * 1.3 + b.ph) * 0.08);
 
     const left = balloons.filter(b => b.alive);
-    if (G.running && !left.length) this.end();
-    hud.lives.textContent = '♥'.repeat(G.lives);
+    if (raidPhase === 'training' && G.running && !left.length) { raidPhase = 'fight'; startWave(1); }
+    stepRaidFight(dt);
+    hud.lives.textContent = '♥'.repeat(Math.max(0, G.lives));
     hud.points.textContent = G.score;
-    const n = nearest(left);
-    if (n) pointAt(n.dir, `Balloons ${left.length}`);
+    if (raidPhase === 'training') { const n = nearest(left); if (n) pointAt(n.dir, `Balloons ${left.length}`); }
+    else { const n = nearest(enemies); if (n) pointAt(n.p, `Wave ${raidWave} · ${enemies.length} left`); else hud.town.textContent = `Wave ${raidWave} cleared`; }
   },
-  // Sprint 1 stops after training; waves of enemies come next.
   end() {
     G.running = false;
     recordBest();
-    panel('Training done!', `All ${TRAINING} balloons popped, ${G.score} points. ` +
-      'Enemy waves come next. They are not in the game yet.', 'Train again');
+    panel('Game over', `Score ${G.score}. You reached wave ${raidWave}. Best ${this.best}.`, 'Play again');
   },
 };
 LW.game = G;
@@ -1891,10 +2048,15 @@ LW.player = player;
 LW.SPEED = SPEED;   // expose for tests (P1 AC8: flight speed, cruise-time balance checks)
 LW.games = { open: openGame, start: startRun, quit: quitGame };
 LW.courier = { openGame: () => openGame('courier'), startRun, quitGame, endRun: () => GAMES.courier.end(), rings, TOWNS, skyFloor };
-LW.raid = { balloons, shots, enemies, bursts, fire, shotWorld };
+LW.raid = { balloons, shots, enemies, bursts, fire, shotWorld, enemyShots, bombs, civilians, bomb: dropBomb, paramsFor };
+Object.defineProperties(LW.raid, {   // live: they change every frame
+  wave: { get: () => raidWave },
+  invulnerable: { get: () => invul },
+  best: { get: () => GAMES.raid.best, set: v => { GAMES.raid.best = v; } },
+});
 LW.touch = {
-  el: touchEl, joystick, fireBtn,
-  setStick: setStickKeys, firePress: setFireKey,
+  el: touchEl, joystick, fireBtn, bombBtn,
+  setStick: setStickKeys, firePress: setFireKey, bombPress: setBombKey,
   get forceShow() { return touchForceShow; },
   set forceShow(v) { touchForceShow = v; updateTouchVisibility(); },
 };

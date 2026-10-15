@@ -37,12 +37,12 @@ Epics are grouped by game, not by order; the milestone tag on each sprint says w
 - [x] Frame-cost check, desktop and throttled phone (AC 5)
 - [x] Metadata, share image, favicon (AC 6)
 
-### Sprint R2: the fight — milestone 2, after P1 and P2
-- [ ] Enemy planes chase, shoot; lives, blink, end screen, best score (AC 7)
-- [ ] Waves with rising speed, count and fire rate (AC 6)
-- [ ] Guns hit civilian planes; bombs hit cars and boats and buildings; respawn and restore on quit (AC 4, 5, 8)
-- [ ] Retune for the bigger planet: balloon spread, enemy spawn distance
-- [ ] Bomb button on touch; checks in tests.html (AC 10)
+### Sprint R2: the fight — milestone 2, done 2026-10-15
+- [x] Enemy planes chase, shoot; lives, blink, end screen, best score (AC 7)
+- [x] Waves with rising speed, count and fire rate (AC 6)
+- [x] Guns hit civilian planes; bombs hit cars and boats and buildings; respawn and restore on quit (AC 4, 5, 8)
+- [x] Retune for the bigger planet: balloon spread, enemy spawn distance
+- [x] Bomb button on touch; checks in tests.html (AC 10)
 
 ## Epic: Planet v2 ([spec](specs/planet-v2.md)) — milestone 1
 

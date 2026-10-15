@@ -2,6 +2,16 @@
 
 Newest first.
 
+
+## 2026-10-15 — P2 density: counts scale with (R/10)², tree search cap raised
+
+Trees, hamlets, boats and clouds scale by `(R/10)²`; planes 8, balloons 8, satellites 8 are fixed.
+At R=15: 3825 trees, 90 hamlets, 16 boats, 77 clouds. The tree loop's attempt cap went from 9000 to
+60000: only ~11% of random directions pass the altitude, forest and city filters, so 25000 gave 2903,
+not 3825. (A stale iframe cache briefly hid the fix; `reload(true)` cleared it.) New getters on `LW`:
+`hamlets`, `countrysideTreeCount`, `cloudCount`. Resize now takes 0.7 s (mid) to 0.9 s (large),
+no loading indicator yet. Suite: 127/127.
+
 ## 2026-09-25 — Three bug reports fixed: resize scenery, train clipping, raid balloons
 
 - **Reports.** Planet resize didn't reposition surface scenery; trains clipped through

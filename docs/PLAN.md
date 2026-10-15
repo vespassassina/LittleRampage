@@ -57,7 +57,7 @@ Epics are grouped by game, not by order; the milestone tag on each sprint says w
 - [x] Review follow-ups: meadows and forests scaled by NZ, dead car code removed, car pool guard, decision trail caught up
 
 ### Sprint P2: fill it and make it breakable
-- [ ] More hamlets, trees, boats, planes, balloons, satellites, clouds by area (spec rules).
+- [x] More hamlets, trees, boats, planes, balloons, satellites, clouds by area (spec rules).
   Trees go through `forestNoise`, already scaled by NZ.
 - [ ] Destructible scenery: per-building, house, tree ranges in the batches; destroy and restore (AC 6)
 - [ ] Frame-cost check at full view (AC 7). Replace the two record-only checks in

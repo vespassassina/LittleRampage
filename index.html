@@ -982,6 +982,7 @@ const sceneryGroup = new THREE.Group(); scene.add(sceneryGroup);   // world batc
 const mills = new THREE.Group(); scene.add(mills);
 const MILLS = [];   // { hub, w }
 const HAMLETS = [];
+let currentCountrysideTreeCount = 0;
 const BOATS = [];   // sailing state per boat, replaced on a rebuild
 const RAIL = new THREE.BoxGeometry(0.06, 0.015, 0.04);  // thin rail strip
 const BLADES = mergeGeometries([0, 1, 2].map(i =>
@@ -1011,15 +1012,19 @@ function buildScenery(first) {
   if (first) initTrains();
 
   // countryside
-  for (let k = 0, placed = 0; k < 9000 && placed < 1700; k++) {
+  const targetTrees = Math.round(1700 * ((R / 10) ** 2));
+  currentCountrysideTreeCount = 0;
+  for (let k = 0, placed = 0; k < 60000 && placed < targetTrees; k++) {
     const d = randomDir(), h = heightAt(d), a = h - R;
     if (a < 0.12 || a > 1.05 || nearCity(d, 0.02)) continue;
     if (forestNoise(d) < -0.03) continue;   // clustered forests
     addTree(world, d.clone().multiplyScalar(h - 0.02), d, rr(0.7, 1.3));
     placed++;
+    currentCountrysideTreeCount = placed;
   }
   // hamlets
-  for (let k = 0, placed = 0; k < 3000 && placed < 40; k++) {
+  const targetHamlets = Math.round(40 * ((R / 10) ** 2));
+  for (let k = 0, placed = 0; k < 6000 && placed < targetHamlets; k++) {
     const d = randomDir(), h = heightAt(d);
     if (h < R + 0.12 || h > R + 0.6 || nearCity(d, 0.05)) continue;
     addHouse(world, frameAt(d.clone().multiplyScalar(h - 0.02), d, randomDir()), rr(0.18, 0.26));
@@ -1044,7 +1049,8 @@ function buildScenery(first) {
   // boats: a circle of deep water each. The circle grows with R, so it is checked at
   // more points on a big planet: same spacing as 16 points at R=15.
   let placed = 0;
-  for (let k = 0; k < 400 && placed < 7; k++) {
+  const targetBoats = Math.round(7 * ((R / 10) ** 2));
+  for (let k = 0; k < 2000 && placed < targetBoats; k++) {
     const d = randomDir(), ang = 0.16;
     const { map } = planeMap(d, R), r = R * Math.tan(ang);
     const n = Math.max(16, Math.round(16 * R / 15));
@@ -1105,7 +1111,7 @@ const aloft = [];   // { obj, lift }
 function fly(obj, lift) { aloft.push({ obj, lift }); obj.position.y = R + lift; }
 
 // ---------- planes and their smoke trails ----------
-const PUFFS_PER_PLANE = 48, PLANES = 4;
+const PUFFS_PER_PLANE = 48, PLANES = 8;
 const puffs = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(1, 1), toon('#ffffff', null, SOFT_RAMP), PLANES * PUFFS_PER_PLANE);
 puffs.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
 puffs.frustumCulled = false;
@@ -1130,7 +1136,7 @@ for (let p = 0; p < PLANES; p++) {
   const pivot = new THREE.Object3D();
   pivot.quaternion.setFromUnitVectors(UP, randomDir());
   pivot.rotateY(rr(0, 6.28));
-  const plane = makePlane(PALETTE[p * 2]);
+  const plane = makePlane(PALETTE[(p * 2) % PALETTE.length]);
   const lift = rr(3.1, 4.3);
   fly(plane, lift);
   pivot.add(plane); scene.add(pivot); vehicles.plane.push(plane);
@@ -1184,7 +1190,7 @@ function makeBalloon(color, tex = stripes(color, '#ffffff')) {
   return b;
 }
 const skyBalloons = [];   // decorative hot-air balloons (not tests/raid.js's target balloons)
-for (let k = 0; k < 4; k++) {
+for (let k = 0; k < 8; k++) {
   const pivot = new THREE.Object3D();
   pivot.quaternion.setFromUnitVectors(UP, randomDir());
   const b = makeBalloon(PALETTE[k]);
@@ -1238,7 +1244,7 @@ function makeSatellite(color) {
   g.add(blinker(0, 0.11, -0.1));
   return g;
 }
-const SAT_COLORS = ['#ffcc33', '#e8e8f0', '#ff9f43', '#ffcc33', '#a66cff', '#e8e8f0'];
+const SAT_COLORS = ['#ffcc33', '#e8e8f0', '#ff9f43', '#ffcc33', '#a66cff', '#e8e8f0', '#6bcbef', '#ff6b6b'];
 SAT_COLORS.forEach(color => {
   const sat = makeSatellite(color);
   orbit(sat, rr(5.2, 6.8), rr(0.05, 0.08));
@@ -1275,10 +1281,12 @@ movers.push((t) => { blinkMat.color.set(Math.sin(t * 4) > 0.3 ? '#ff3b3b' : '#5a
 // ---------- clouds ----------
 const clouds = new THREE.Group();
 const CLOUD_SEED = seed, PUFF = new THREE.IcosahedronGeometry(1, 2);
+let cloudCount = 0;
 function buildClouds() {   // applySize() replays it at the new R
   clearBatch(clouds);
   const CB = new Batch(), mat = toon('#ffffff', null, SOFT_RAMP);
-  for (let k = 0; k < 34; k++) {
+  cloudCount = Math.round(34 * (R / 10) ** 2);   // by area, like trees and hamlets
+  for (let k = 0; k < cloudCount; k++) {
     const d = randomDir(), alt = rr(R + 2.3, R + 3.6), [t1, t2] = tangentBasis(d);
     const n = 3 + Math.floor(rand() * 4);
     for (let i = 0; i < n; i++) {
@@ -2098,6 +2106,10 @@ Object.defineProperty(LW, 'HC', { get: () => HC, configurable: true });
 // (trains AC5: tests read LW.mode after clicking a Ride-menu item to confirm it switched)
 Object.defineProperty(LW, 'mode', { get: () => mode, configurable: true });
 LW.skyBalloons = skyBalloons;
+// live getters: a resize rebuilds scenery (planet-v2 AC5 density checks)
+LW.hamlets = HAMLETS;
+Object.defineProperty(LW, 'countrysideTreeCount', { get: () => currentCountrysideTreeCount, configurable: true });
+Object.defineProperty(LW, 'cloudCount', { get: () => cloudCount, configurable: true });
 // Trains
 Object.defineProperty(LW, 'trainTrack', { get: () => trainTrack, configurable: true });   // live: a resize builds a new track (trains AC1/AC2/AC4)
 LW.scenery = { world: sceneryGroup, mills, clouds, inkMeshes: ALL_INK_MESHES };   // expose for tests (planet-size-scenery.js)

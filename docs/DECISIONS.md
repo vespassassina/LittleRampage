@@ -2,6 +2,18 @@
 
 Newest first.
 
+## 2026-10-15 Final sprint: the frame-cost check is a script, not a test
+
+- `tools/frame-cost.mjs` drives Brave over CDP (no npm, no install; Node's built-in WebSocket). Real
+  GPU (Apple M5, Metal), real 4x CPU throttle, whole frames: `LW.frame()`, `gl.finish()` and a 1-pixel
+  readback. Without the readback the numbers were 3-4x too low. It refuses a software renderer.
+- It cannot be a `tests.html` check: the pane throttles and hides, and there is no CPU throttle there.
+- Results on this Mac (mean / p95): desktop High start view 4.8 / 5.8 ms; kaiju heat 4 on all three
+  kaiju 3.2-3.5 / 3.8-4.2 ms. Phone 375x812 Low, 4x throttle: start view 5.2 / 8.4 ms; kaiju heat 4
+  3.7-4.0 / 4.4-5.3 ms. Budgets 16 and 33 ms: all pass, with wide margin. Worst single frame 31 ms (GC or warm-up).
+- Limit: the 4x throttle is CPU only. An M5 GPU is much faster than a phone GPU. The check on a real
+  low-end phone stays in "Later", as planned.
+
 ## 2026-10-15 Kaiju K4: the roster
 
 - Start screen has a picker: Scalezor (default), Bonkers, Shellback, Random. The choice is kept for

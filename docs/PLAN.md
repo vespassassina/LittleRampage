@@ -133,8 +133,8 @@ Raised 2026-09-23 (second batch), needs design before building:
   gameplay, or is it purely cosmetic? does it interact with the moon's orbit already in
   the scene?).
 
-## Final sprint: measure the GPU
-- [ ] Frame-cost check at full view (planet-v2 AC 7). Moved here from Sprint P2 on 2026-10-15:
+## Final sprint: measure the GPU (done 2026-10-15)
+- [x] Frame-cost check at full view (planet-v2 AC 7), done 2026-10-15 as `tools/frame-cost.mjs` (CDP, no npm). The two record-only tests stay as baselines. Moved here from Sprint P2 on 2026-10-15:
   measure the whole game once, after Kaiju. Replace the two record-only checks in
   `tests/frame-cost.js` (they always pass). From the start view: assert desktop High under
   16 ms and phone emulation Low under 33 ms. Time whole frames, GPU included (rAF-timed run,

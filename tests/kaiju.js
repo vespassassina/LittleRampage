@@ -35,6 +35,9 @@
       if ($('panel').hidden) throw new Error('the start screen did not show');
       if (!/Scalezor/.test($('p-text').textContent)) throw new Error('the start screen does not name Scalezor');
       if (LW.game.running) throw new Error('the run must wait for Start');
+      // The loop runs under the start screen. On a fresh page no run has happened yet, and this once threw
+      // every frame before the render call: a frozen screen. It only shows for the first Kaiju of a page load.
+      for (let i = 0; i < 3; i++) LW.frame(1 / 60);
       $('p-go').click();
       const G = LW.game, K = LW.kaiju;
       if (!G.running || G.kind !== 'kaiju') throw new Error('Start did not begin a Kaiju run');

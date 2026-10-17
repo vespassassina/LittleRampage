@@ -2,6 +2,19 @@
 
 Newest first.
 
+## 2026-10-17 Kaiju froze the page on the first Play of a load
+
+- Cause: `kaijuRun` started as `null`. The game loop steps the active game under the start panel,
+  before Start. `GAMES.kaiju.step` read `KAIJU[kaijuRun].health` there, threw every frame, and the
+  render call after it never ran. A frozen screen, only on the first Kaiju of a page load: a later
+  run had set `kaijuRun`, and every test had already clicked Start in an earlier test.
+- Fix: `kaijuRun` starts as `'scalezor'`. A check now steps three frames under the start panel.
+  Seen failing before, 196/196 after.
+- Lesson: the first-open path was never exercised. Anything a game's `step` reads must be valid
+  before `start()`. Not swept: Courier and Raid ran clean in a live capture, nothing more.
+- tests.html loads the app in an iframe the pane caches: after an edit, `fetch(url, {cache:'reload'})`
+  for `index.html?test` and the changed test file, or a green or red run can be the old code.
+
 ## 2026-10-15 Final sprint: the frame-cost check is a script, not a test
 
 - `tools/frame-cost.mjs` drives Brave over CDP (no npm, no install; Node's built-in WebSocket). Real

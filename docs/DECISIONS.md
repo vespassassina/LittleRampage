@@ -2,6 +2,14 @@
 
 Newest first.
 
+## 2026-10-17 Trains: on the ground, tunnels through mountains and under cities, bridges only over water
+
+- Feedback: trains should run on land, not on bridges over land; enter a tunnel at mountains; bridges only over water.
+- Supersedes the city viaduct and its ramp (2026-10-17, round 2) and the "track never dips below terrain" rule.
+- Land: rails on the ground (+lift). Water: bridge deck at R + 0.18 with pillars. Ground above R + 0.7: level tunnel inside it (`TUNNEL_CAP`).
+- Cities: assumption, not asked. The track runs 0.15 under the plateau floor (`CITY_DEPTH`), like a subway, so it never clips a building. A dark portal slab marks each mouth; rails are not drawn underground.
+- Not checked: riding a train in a tunnel (the camera sits inside the terrain), the city entrances, a mountain on the other two planet sizes.
+
 ## 2026-10-17 Trains cross water on a bridge
 
 - Feedback: trains should run on land, and use bridges over water.

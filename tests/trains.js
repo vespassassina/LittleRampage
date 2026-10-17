@@ -72,35 +72,14 @@ LW_TESTS.push({
 });
 
 LW_TESTS.push({
-  name: 'trains: AC2 — track follows terrain height (heightAt + lift, or city clearance)',
+  name: 'trains: AC2 — track follows terrain height (heightAt + lift) unless it is a bridge or a tunnel',
   run(LW) {
     if (!LW.trainTrack) throw new Error('LW.trainTrack not exposed');
-
-    // Sample several points along the track. These fractions (0.1, 0.3, 0.5, 0.7, 0.9
-    // of total, for 5 cities) are the exact segment-midpoint convention used by AC1 to
-    // land on each city's own direction, so every one of these 5 samples sits inside a
-    // city's cap. There the track is intentionally raised above heightAt+lift to clear
-    // rooftops (see the TrainTrack constructor's city-clearance loop, HC + c.maxH +
-    // 0.25), so the expectation here mirrors that same rule instead of plain
-    // heightAt+lift.
-    const total = LW.trainTrack.total;
-    const samples = [0.1, 0.3, 0.5, 0.7, 0.9].map(frac => frac * total);
-    const liftTolerance = 0.05;  // allow some tolerance for interpolation
-
-    for (const s of samples) {
-      const pos = LW.trainTrack.at(s);
-      const dir = pos.clone().normalize();
-      let expectedHeight = LW.heightAt(dir) + LW.trainTrack.lift;
-      for (const c of LW.CITIES) {
-        if (dir.angleTo(c.dir) < c.cap + 0.08) {
-          expectedHeight = Math.max(expectedHeight, LW.HC + c.maxH + 0.25);
-        }
-      }
-      const actualRadius = pos.length();
-
-      if (Math.abs(actualRadius - expectedHeight) > liftTolerance) {
-        throw new Error(`At s=${s}: radius ${actualRadius.toFixed(3)} != expected ${expectedHeight.toFixed(3)} (diff ${Math.abs(actualRadius - expectedHeight).toFixed(3)})`);
-      }
+    // Waypoints only: between them the track is a straight chord.
+    for (const [i, p] of LW.trainTrack.waypoints.entries()) {
+      const g = LW.heightAt(p.clone().normalize()), r = p.length();
+      if (g <= LW.R) continue;                      // water: the bridge test covers it
+      if (r > g + LW.trainTrack.lift + 0.001) throw new Error(`waypoint ${i} floats ${(r - g).toFixed(3)} above the land`);
     }
     return true;
   }
@@ -240,7 +219,7 @@ LW_TESTS.push({
 });
 
 LW_TESTS.push({
-  name: 'trains: regression — track never dips below the terrain surface (mountain clipping)',
+  name: 'trains: regression — track never dips below the terrain surface (tunnels excepted)',
   run(LW) {
     if (!LW.trainTrack) throw new Error('LW.trainTrack not exposed');
 
@@ -260,7 +239,9 @@ LW_TESTS.push({
       const dir = pos.clone().normalize();
       const groundHeight = LW.heightAt(dir);
       const trackRadius = pos.length();
-      const deficit = groundHeight - trackRadius;  // positive means the track is under the ground
+      // Tunnels are the one deliberate way under the ground: a mountain (above R + 0.7) or a city plateau.
+      const tunnel = groundHeight > LW.R + 0.7 || LW.CITIES.some(c => dir.angleTo(c.dir) < c.outer);
+      const deficit = tunnel ? 0 : groundHeight - trackRadius;  // positive means the track is under the ground
       if (deficit > worstDeficit) {
         worstDeficit = deficit;
         worstAt = dir.toArray();
@@ -284,21 +265,21 @@ LW_TESTS.push({
 });
 
 LW_TESTS.push({
-  name: 'trains: the track climbs onto the city viaduct on a ramp, never in one step',
+  name: 'trains: mountains and cities are tunnelled, and a portal marks each mouth',
   run(LW) {
     const wp = LW.trainTrack.waypoints;
-    let steepest = 0;
-    for (let i = 0; i < wp.length; i++) {
-      const a = wp[i], b = wp[(i + 1) % wp.length];
-      steepest = Math.max(steepest, Math.abs(b.length() - a.length()) / Math.max(1e-6, a.distanceTo(b)));
+    let tunnel = 0;
+    for (const p of wp) {
+      const g = LW.heightAt(p.clone().normalize());
+      if (g > LW.R && g - p.length() > 0.12) tunnel++;
     }
-    if (steepest > 0.6) throw new Error(`the track rises ${steepest.toFixed(2)} per unit: a jump, not a ramp`);
-    // a little way out of a city the track is already off the ground
-    const c = LW.CITIES[0], out = c.cap + 0.08 + 0.15;
-    const near = wp.filter(p => Math.abs(p.clone().normalize().angleTo(c.dir) - out) < 0.06);
-    if (!near.length) throw new Error('no waypoint on the approach to city 0');
-    const lifted = near.some(p => p.length() - Math.max(LW.heightAt(p.clone().normalize()), LW.R) > 0.1);
-    if (!lifted) throw new Error('the ramp has not started 0.15 rad out from the city');
+    if (!tunnel) throw new Error('no waypoint is inside the ground: cities should be under their plateau');
+    // under city 0 the track is below the floor, so no rail can clip a building
+    const c = LW.CITIES[0], mid = wp.filter(p => p.clone().normalize().angleTo(c.dir) < c.inner);
+    if (!mid.length) throw new Error('no waypoint under city 0');
+    if (mid.some(p => p.length() > LW.HC - 0.1)) throw new Error('track is above the floor of city 0');
+    // the rails over a mountain never climb it
+    if (wp.some(p => p.length() > LW.R + 0.7 + 0.05 && LW.heightAt(p.clone().normalize()) > LW.R)) throw new Error('track climbs a mountain');
     return true;
   }
 });
@@ -312,9 +293,9 @@ LW_TESTS.push({
       if (h <= LW.R) {
         wet++;
         if (p.length() < LW.R + 0.1) throw new Error(`track at ${p.length().toFixed(2)} is under or in the sea`);
-      } else if (!LW.CITIES.some(c => up.angleTo(c.dir) < c.cap + 0.08 + 0.7)) {
+      } else {
         dry++;
-        if (p.length() - h > 0.2) throw new Error(`track floats ${(p.length() - h).toFixed(2)} above dry land away from cities`);
+        if (p.length() - h > 0.02) throw new Error(`track floats ${(p.length() - h).toFixed(2)} above dry land`);
       }
     }
     if (!wet) throw new Error('no waypoint over water: the check proves nothing on this seed');

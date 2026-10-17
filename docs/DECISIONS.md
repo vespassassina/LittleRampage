@@ -2,6 +2,20 @@
 
 Newest first.
 
+## 2026-10-17 Sound: synthesised effects, a mute button, no music yet
+
+- Request: "add sound to the game". Read as effects, not music; assumption stated, music not built.
+- Web Audio only: every effect is an oscillator or filtered noise made in code (`SFX` in `index.html`).
+  No audio files, no new dependency, nothing more to download for the public page.
+- The context is made on the first key or touch (browsers keep audio locked until then). Before
+  that, `sfx()` still logs what it was asked for, so tests can check intent without a sound card.
+- Mix guards: one sound at most every 50 ms of frame time, at most 14 voices. A stomp in a city
+  asks for several booms in one frame; without the guard that is a wall of noise.
+- Mute is a fixed button (top right, all modes), remembered in `lw-sound`.
+- Evidence: 206/206 checks. Real Brave run with a tap on the output: stomp, swipe, roar and hit all
+  produce signal (peaks 0.41, 0.24, 0.25, 0.17), no exceptions. Not done: listening by ear for taste
+  (levels and timbre are first guesses), and a phone check (iOS needs the first touch to unlock).
+
 ## 2026-10-17 Kaiju: visible moves, smaller body
 
 - Report: "i cannot see stomping or tailing, the kaiju is too big". Guide: arcade Rampage, where

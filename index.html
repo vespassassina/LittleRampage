@@ -43,6 +43,7 @@
     transform: rotate(-3deg); pointer-events: none;
   }
   #ui { position: fixed; left: 16px; bottom: 16px; display: flex; gap: 8px; flex-wrap: wrap; max-width: calc(100vw - 32px); }
+  #mute { position: fixed; right: 16px; top: 14px; z-index: 3; padding: 4px 10px; }
   #game-buttons { position: fixed; right: 16px; top: 64px; z-index: 2; display: flex; flex-direction: column; gap: 8px; align-items: flex-end; }
   button {
     font: inherit; font-size: 20px; letter-spacing: 1px; color: #000;
@@ -173,6 +174,7 @@
   <div id="teat" class="tkaiju" hidden>EAT</div>
   <div id="troar" class="tkaiju" hidden>ROAR</div>
 </div>
+<button id="mute" title="Sound on or off" aria-label="Sound">🔊</button>
 <div id="game-buttons">
   <button id="play">Play Sky Courier</button>
   <button id="play-raid">Play Sky Raid</button>
@@ -1401,6 +1403,78 @@ const moon = (() => {
 // ---------- controls and camera modes ----------
 const controls = new OrbitControls(camera, renderer.domElement);
 window.LW = { camera, scene, renderer, vehicles, PALETTE, controls };   // handy from the dev console
+
+// ---------- sound: every effect is synthesised here with Web Audio, nothing is downloaded ----------
+const SOUND_KEY = 'lw-sound';
+const audio = { ctx: null, master: null, noise: null, muted: false, voices: 0, clock: 0, last: {}, log: [] };   // clock runs on frame time, so tests that step frames see the same thinning
+try { audio.muted = localStorage.getItem(SOUND_KEY) === 'off'; } catch { /* default: on */ }
+const MAX_VOICES = 14, SFX_GAP = 0.05;   // a stomp inside a city can fire several booms in one frame; this keeps the mix clean
+// Browsers keep audio locked until the player does something, so the context is made on the first touch or key.
+function unlockAudio() {
+  if (audio.ctx || !(window.AudioContext || window.webkitAudioContext)) return;
+  try {
+    const c = audio.ctx = new (window.AudioContext || window.webkitAudioContext)();
+    audio.master = c.createGain(); audio.master.gain.value = 0.5; audio.master.connect(c.destination);
+    audio.noise = c.createBuffer(1, c.sampleRate, c.sampleRate);
+    const d = audio.noise.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+  } catch { audio.ctx = null; }
+}
+for (const ev of ['pointerdown', 'keydown']) addEventListener(ev, () => { unlockAudio(); audio.ctx?.resume?.(); }, { passive: true });
+function voice(src, vol, dur, delay, head = src) {   // envelope, routing and cleanup shared by every sound; `head` is what starts and stops
+  const c = audio.ctx, g = c.createGain(), t = c.currentTime + delay;
+  g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(vol, t + 0.01); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  src.connect(g); g.connect(audio.master);
+  audio.voices++; head.onended = () => { audio.voices--; g.disconnect(); };
+  head.start(t); head.stop(t + dur + 0.05);
+}
+function tone(type, f0, f1, dur, vol, delay = 0) {
+  const o = audio.ctx.createOscillator(), t = audio.ctx.currentTime + delay;
+  o.type = type; o.frequency.setValueAtTime(f0, t); o.frequency.exponentialRampToValueAtTime(f1, t + dur);
+  voice(o, vol, dur, delay);
+}
+function hiss(filter, f0, f1, dur, vol, delay = 0) {
+  const c = audio.ctx, n = c.createBufferSource(), f = c.createBiquadFilter(), t = c.currentTime + delay;
+  n.buffer = audio.noise; n.loop = true; f.type = filter; f.frequency.setValueAtTime(f0, t); f.frequency.exponentialRampToValueAtTime(f1, t + dur);
+  n.connect(f); voice(f, vol, dur, delay, n);
+}
+const SFX = {
+  stomp: () => { tone('sine', 140, 40, 0.35, 0.9); hiss('lowpass', 500, 80, 0.25, 0.5); },
+  swipe: () => hiss('bandpass', 300, 1800, 0.4, 0.5),
+  boom: () => { hiss('lowpass', 900, 60, 0.5, 0.7); tone('sine', 90, 35, 0.5, 0.6); },
+  crunch: () => { hiss('lowpass', 1400, 120, 0.3, 0.5); tone('sine', 110, 45, 0.25, 0.45); },
+  pop: () => tone('sine', 500, 900, 0.08, 0.5),
+  gulp: () => { tone('sine', 400, 120, 0.18, 0.6); tone('sine', 300, 100, 0.15, 0.5, 0.12); },
+  roar: () => { tone('sawtooth', 95, 45, 0.9, 0.35); tone('sawtooth', 101, 50, 0.9, 0.3); hiss('bandpass', 250, 120, 0.9, 0.3); },
+  hit: () => { hiss('lowpass', 1200, 300, 0.12, 0.5); tone('square', 160, 80, 0.1, 0.25); },
+  hurt: () => { tone('sawtooth', 300, 80, 0.3, 0.4); hiss('lowpass', 900, 150, 0.3, 0.4); },
+  shot: () => tone('square', 900, 300, 0.07, 0.2),
+  drop: () => tone('sine', 1200, 300, 0.5, 0.25),
+  pistol: () => tone('square', 700, 200, 0.05, 0.16),
+  cannon: () => { tone('sine', 110, 50, 0.25, 0.6); hiss('lowpass', 700, 100, 0.2, 0.4); },
+  missile: () => hiss('highpass', 600, 3000, 0.5, 0.25),
+  deliver: () => [523, 659, 784].forEach((f, i) => tone('triangle', f, f, 0.18, 0.3, i * 0.08)),
+  ring: () => tone('triangle', 880, 1320, 0.12, 0.3),
+  start: () => tone('square', 330, 660, 0.2, 0.2),
+  win: () => [523, 659, 784, 1047].forEach((f, i) => tone('triangle', f, f, 0.2, 0.3, i * 0.1)),
+  lose: () => tone('sawtooth', 400, 100, 0.8, 0.3),
+};
+function sfx(name) {
+  if (audio.muted) return;
+  if (audio.clock - (audio.last[name] ?? -1) < SFX_GAP) return;
+  audio.last[name] = audio.clock;
+  audio.log.push(name); if (audio.log.length > 50) audio.log.shift();   // so tests can hear what the game asked for
+  if (!audio.ctx || audio.voices >= MAX_VOICES) return;
+  try { SFX[name](); } catch { /* a sound that fails is a sound that is missing, not a crash */ }
+}
+const muteBtn = document.getElementById('mute');
+function setMuted(v) {
+  audio.muted = v;
+  if (muteBtn) { muteBtn.textContent = v ? '🔇' : '🔊'; muteBtn.setAttribute('aria-pressed', String(v)); }
+  try { localStorage.setItem(SOUND_KEY, v ? 'off' : 'on'); } catch { /* session-only */ }
+}
+if (muteBtn) muteBtn.onclick = () => { setMuted(!audio.muted); if (!audio.muted) { unlockAudio(); sfx('pop'); } };
+if (muteBtn && audio.muted) { muteBtn.textContent = '🔇'; muteBtn.setAttribute('aria-pressed', 'true'); }
+LW.audio = { log: audio.log, get muted() { return audio.muted; }, set muted(v) { setMuted(v); }, get live() { return !!audio.ctx; } };
 controls.enableDamping = true; controls.dampingFactor = 0.06;
 controls.enablePan = false;
 controls.minDistance = R + 0.9; controls.maxDistance = 8 * R;   // maxDistance scales with R, same as start distance
@@ -1593,6 +1667,7 @@ function openGame(kind) {
   updateTouchVisibility();
 }
 function startRun() {
+  sfx('start');
   resetPlane();
   G.score = 0; G.keys.clear();
   document.activeElement?.blur();   // or Space would press the button that had focus
@@ -1775,10 +1850,10 @@ GAMES.courier = {
       G.time -= dt;
       if (G.p.angleTo(G.town.dir) * R < DELIVER_R) {
         G.score++;
-        pop(`Delivered! +${Math.round(newLeg())}s`);
+        pop(`Delivered! +${Math.round(newLeg())}s`); sfx('deliver');
       }
       _pos.copy(G.p).multiplyScalar(G.alt);
-      for (const r of rings) if (r.mesh.position.distanceTo(_pos) < RING_R) { G.time += 3; pop('+3s'); placeRing(r, true); }
+      for (const r of rings) if (r.mesh.position.distanceTo(_pos) < RING_R) { G.time += 3; pop('+3s'); sfx('ring'); placeRing(r, true); }
       if (G.time <= 0) this.end();
     }
     beaconBox.position.y = 1.2 + Math.sin(t * 3) * 0.2;
@@ -1794,6 +1869,7 @@ GAMES.courier = {
   end() {
     G.running = false; G.time = 0;
     const record = recordBest();
+    sfx(record ? 'win' : 'lose');
     panel(record ? 'New best!' : "Time's up!",
       `You delivered ${G.score} parcel${G.score === 1 ? '' : 's'}. Best: ${this.best}.`, 'Fly again');
   },
@@ -1827,6 +1903,7 @@ function burst(pos, kind, size) {
   const b = bursts[nextBurst]; nextBurst = (nextBurst + 1) % bursts.length;
   b.g.position.copy(pos); b.g.visible = true; b.age = 0; b.size = size ?? (kind === 'boom' ? 0.55 : 0.3);
   b.word.material.map = WORD_TEX[pick(WORDS[kind])];
+  sfx(kind === 'boom' ? (b.size < 0.4 ? 'crunch' : 'boom') : kind);
 }
 movers.push((t, dt) => {
   for (const b of bursts) {
@@ -1858,7 +1935,7 @@ const _shotM = new THREE.Matrix4();
 function fire() {
   const s = shots.find(s => s.life <= 0);
   if (!s) return;
-  s.p.copy(G.p); s.f.copy(G.f); s.alt = G.alt - 0.02; s.life = SHOT_RANGE / SHOT_SPEED;
+  s.p.copy(G.p); s.f.copy(G.f); s.alt = G.alt - 0.02; s.life = SHOT_RANGE / SHOT_SPEED; sfx('shot');
   advance(s.p, s.f, 0.3, s.alt);   // leave from the nose, not the cockpit
 }
 
@@ -1933,7 +2010,7 @@ const _cw = new V3(), _er = new V3(), _ep = new V3(), _em = new THREE.Matrix4();
 
 function freeSlot(list, key) { return list.find(x => !x[key]); }
 function hurtPlayer() {
-  G.lives--; invul = BLINK;
+  G.lives--; invul = BLINK; sfx('hurt');
   burst(player.position, 'boom');
   if (G.lives <= 0) GAMES.raid.end();
 }
@@ -1984,7 +2061,7 @@ function stepEnemy(e, dt) {
 }
 function dropBomb() {
   const b = freeSlot(bombs, 'life'); if (!b) return;
-  b.p.copy(G.p); b.alt = G.alt - 0.1; b.life = 1;
+  b.p.copy(G.p); b.alt = G.alt - 0.1; b.life = 1; sfx('drop');
 }
 function explodeBomb(b) {
   const ground = Math.max(heightAt(b.p), R);
@@ -2088,7 +2165,7 @@ GAMES.raid = {
     else { const n = nearest(enemies); if (n) pointAt(n.p, `Wave ${raidWave} · ${enemies.length} left`); else hud.town.textContent = `Wave ${raidWave} cleared`; }
   },
   end() {
-    G.running = false;
+    G.running = false; sfx('lose');
     recordBest();
     panel('Game over', `Score ${G.score}. You reached wave ${raidWave}. Best ${this.best}.`, 'Play again');
   },
@@ -2236,7 +2313,7 @@ function smash(inside, planes) {
 function stomp() {
   if (!spend(COST.stomp)) return 0;
   // a disc STOMP_R across, centred STOMP_AT in front of the feet
-  stompAnim = STOMP_ANIM;
+  stompAnim = STOMP_ANIM; sfx('stomp');
   const a = STOMP_AT / R;
   const centre = new V3().copy(G.p).multiplyScalar(Math.cos(a)).addScaledVector(G.f, Math.sin(a));
   const cosT = Math.cos(STOMP_R / R);
@@ -2245,7 +2322,7 @@ function stomp() {
 }
 function swipe() {
   if (!spend(COST.swipe)) return 0;
-  swipeAnim = SWIPE_ANIM;
+  swipeAnim = SWIPE_ANIM; sfx('swipe');
   const { reach, half, dir } = KAIJU[kaijuRun].swipe;
   const sf = new V3().copy(G.f).multiplyScalar(dir), cosR = Math.cos(reach / R);
   const arc = d => {
@@ -2323,16 +2400,17 @@ function eat() {
 function roar() {
   if (roarWait > 0 || !spend(COST.roar)) return false;
   roarWait = ROAR_COOLDOWN; roarFear = ROAR_FEAR; armyQuiet = ROAR_QUIET;
-  pop('ROAR!');
+  pop('ROAR!'); sfx('roar');
   return true;
 }
 function endKaiju() {
-  G.running = false;
+  G.running = false; sfx('lose');
   recordBest();
   $('k-pick').hidden = false;   // pick again for the next run
   panel('Flattened!', `Score ${G.score}. Heat ${maxHeat}. You lasted ${Math.round(kaijuClock)} s. Best ${GAMES.kaiju.best}.`, 'Play again');
 }
 function damage(n) {
+  if (n >= 0.4) sfx('hit');   // not the slow starving drain, which calls this every frame
   kHealth = Math.max(0, kHealth - n);
   if (kHealth <= 0 && G.running) endKaiju();
 }
@@ -2386,6 +2464,7 @@ const chest = out => out.copy(G.p).multiplyScalar(CHEST).add(kaijuMesh.position)
 function fireShot(from, spec, dmg) {
   const i = armyShots.findIndex(s => s.life <= 0);
   if (i < 0) return;
+  sfx(spec === TANK ? 'cannon' : spec === JET ? 'missile' : 'pistol');
   const s = armyShots[i], d = chest(_ac).sub(from).length();
   s.pos.copy(from); s.vel.copy(chest(_ac)).sub(from).setLength(spec.shot); s.life = d / spec.shot + 0.6; s.dmg = dmg;
   unitShots.setColorAt(i, _aq0.set(spec.color)); unitShots.instanceColor.needsUpdate = true;
@@ -2760,6 +2839,7 @@ const tmp = new V3(), tmp2 = new V3();
 let avgFrameMs = 16;   // rolling estimate, fed to the auto quality switch
 function frame(fixedDt) {
   const dt = fixedDt ?? Math.min(clock.getDelta(), 0.05), t = clock.elapsedTime;
+  audio.clock += dt;
   for (const f of movers) f(t, dt);
 
   // Real auto-switch: only on real gameplay frames (not test-driven fixed steps),

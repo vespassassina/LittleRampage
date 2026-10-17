@@ -659,7 +659,8 @@ const circle = (r, n = 72, dir = 1) => Array.from({ length: n }, (_, i) => {
 
 // ---------- 3D track loop for trains (slerp-based, follows terrain) ----------
 const BRIDGE_DECK = 0.18;   // deck height above sea level: the pillar gap (0.18 - 0.012 - 0.05) must clear the 0.1 skip in buildTrainRail
-const TRAIN_RAMP = 0.7;   // radians: about 10 units at R = 15; the viaduct is up to 3 units high, so a shorter ramp is a wall
+const TUNNEL_CAP = 0.7;     // ground higher than this above sea level is tunnelled, not climbed: hills (up to about 0.5) stay open
+const CITY_DEPTH = 0.15;    // under a city plateau the track runs this far below the floor, so it never clips a building
 class TrainTrack {
   constructor(cities, order, lift = 0.015) {
     this.lift = lift;
@@ -688,22 +689,15 @@ class TrainTrack {
           slerped.addScaledVector(dir2, Math.sin(t * arcAngle) / Math.sin(arcAngle));
         }
 
-        // Sample terrain height directly under the interpolated direction, so the
-        // track follows the actual ground (including mountains between cities)
-        // instead of lerping between the two endpoint heights.
+        // Rails sit on the ground. Over water the ground is the sea floor, so the track crosses on a
+        // bridge deck above sea level. Under a mountain or a city plateau it runs level inside the
+        // ground (a tunnel); buildTrainRail adds a portal where it goes in and out.
         let h = heightAt(slerped) + lift;
-        // Near a city, buildings extend up through the plateau (see skyFloor() and
-        // its courier-game twin around line ~1957, same c.maxH clamp pattern);
-        // raise the track to clear them like an elevated viaduct through the city.
-        // The rise is a ramp, not a step: it starts TRAIN_RAMP radians out, so the train climbs
-        // onto the viaduct instead of jumping into the sky at the city edge.
-        // Over water the ground is the sea floor: the track crosses on a bridge deck above sea level.
-        if (heightAt(slerped) <= R) h = R + BRIDGE_DECK;
-        const ground = h;
-        for (const c of cities) {
-          const a = slerped.angleTo(c.dir) - (c.cap + 0.08);
-          const top = Math.max(ground, HC + c.maxH + 0.25);
-          h = Math.max(h, ground + (top - ground) * (1 - smooth(0, TRAIN_RAMP, a)));
+        if (h <= R + lift) h = R + BRIDGE_DECK;
+        else {
+          let cap = R + TUNNEL_CAP;
+          for (const c of cities) cap = Math.min(cap, HC - CITY_DEPTH + 2 * smooth(c.inner, c.outer, slerped.angleTo(c.dir)));
+          h = Math.min(h, cap);
         }
         const pos = slerped.multiplyScalar(h);
         this.waypoints.push(pos);
@@ -1072,6 +1066,7 @@ const MILLS = [];   // { hub, w }
 const HAMLETS = [];
 let currentCountrysideTreeCount = 0;
 const BOATS = [];   // sailing state per boat, replaced on a rebuild
+const PORTAL = new THREE.BoxGeometry(0.3, 0.3, 0.05);   // a dark slab across the tunnel mouth (x across, z along the track)
 const RAIL = new THREE.BoxGeometry(0.06, 0.015, 0.04);  // thin rail strip
 const PILLAR = new THREE.BoxGeometry(0.05, 1, 0.05).translate(0, 0.5, 0);   // unit height: scaled to the gap under the track
 const BLADES = mergeGeometries([0, 1, 2].map(i =>
@@ -1176,20 +1171,27 @@ function buildScenery(first) {
 // ---------- train rail mesh ----------
 function buildTrainRail() {
   const railMaterial = toon('#7a6a5a');  // brownish rail color
+  const portalMaterial = toon('#2a2530');  // dark mouth of a tunnel
+  const buried = (pos, up) => Math.max(heightAt(up), R) - pos.length() > 0.12;   // inside a hill, a mountain or under a city
 
-  // Sample the track and add rail boxes
+  // Sample the track and add rail boxes; a portal wherever the track enters or leaves the ground
   const railSamples = Math.ceil(trainTrack.total / 0.15);  // sample every 0.15 world units
+  let wasBuried = null;
   for (let i = 0; i < railSamples; i++) {
     const s = (i / railSamples) * trainTrack.total;
     const pos = trainTrack.at(s);
     const nextPos = trainTrack.at(s + 0.15);
     const up = pos.clone().normalize();
     const fwd = nextPos.clone().sub(pos).normalize();
+    const inside = buried(pos, up);
+    if (wasBuried !== null && inside !== wasBuried)
+      world.add(PORTAL, portalMaterial, frameAt(pos.clone().addScaledVector(up, 0.12), up, fwd), 0.01);
+    wasBuried = inside;
+    if (inside) continue;   // nobody sees rails under the ground
 
-    const railMat = frameAt(pos, up, fwd);
-    world.add(RAIL, railMaterial, railMat, 0.01);
+    world.add(RAIL, railMaterial, frameAt(pos, up, fwd), 0.01);
   }
-  // Pillars under every stretch that is lifted off the ground, so it reads as an elevated railway.
+  // Pillars under the bridges.
   const pillars = Math.ceil(trainTrack.total / 0.6);
   for (let i = 0; i < pillars; i++) {
     const pos = trainTrack.at((i / pillars) * trainTrack.total), up = pos.clone().normalize();

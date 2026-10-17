@@ -76,17 +76,14 @@
   LW_TESTS.push({
     name: 'planet-size scenery: train track follows the new terrain after resize',
     run(LW) {
-      // Waypoints sit exactly on the ground (+lift) or on the city viaduct; between them
-      // the track is a straight chord, so only the waypoints are checked.
+      // Waypoints sit on the ground (+lift), on a bridge deck over water, or inside the ground in a
+      // tunnel; between them the track is a straight chord, so only the waypoints are checked.
       withSize(LW, 'large', () => {
         LW.trainTrack.waypoints.forEach((pos, i) => {
-          const dir = pos.clone().normalize();
-          // on the ground, or on the ramp, or on the viaduct: never under the ground, never above the viaduct
-          const low = LW.heightAt(dir) + LW.trainTrack.lift;
-          let high = low;
-          for (const c of LW.CITIES) high = Math.max(high, LW.HC + c.maxH + 0.25);
-          if (pos.length() < low - 0.001 || pos.length() > high + 0.001) {
-            throw new Error(`large: track waypoint ${i} at radius ${pos.length().toFixed(3)}, allowed ${low.toFixed(3)} to ${high.toFixed(3)}`);
+          const g = LW.heightAt(pos.clone().normalize());
+          const high = g <= LW.R ? LW.R + 0.2 : g + LW.trainTrack.lift;
+          if (pos.length() > high + 0.001 || pos.length() < LW.R - 0.001) {
+            throw new Error(`large: track waypoint ${i} at radius ${pos.length().toFixed(3)}, allowed ${LW.R.toFixed(3)} to ${high.toFixed(3)}`);
           }
         });
       });

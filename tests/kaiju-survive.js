@@ -17,6 +17,8 @@
   }
   const put = (q, at) => { q.p.copy(at.p); q.f.copy(at.f); };
   const alive = K => K.people.filter(q => q.alive);
+  // Walking into food eats it, so checks about the drain keep people and civilian traffic out of reach.
+  const noFood = (LW, K) => { for (const q of K.people) q.p.copy(LW.game.p).negate(); for (const c of LW.raid.civilians) { c.alive = false; c.respawnAt = 1e9; } };   // respawnAt: or they come back next frame
 
   LW_TESTS.push({
     name: 'kaiju: health and energy start full, with bars on the HUD (AC 5)', game: 'kaiju',
@@ -35,7 +37,7 @@
   LW_TESTS.push({
     name: 'kaiju: energy drains 1 per second (AC 5)', game: 'kaiju',
     run(LW) {
-      const K = begin(LW);
+      const K = begin(LW); noFood(LW, K);
       step(LW, 5);
       near(K.energy, 95, 0.3, 'energy after 5 s');
       if (K.health !== 100) throw new Error('health must not drain while energy lasts');
@@ -57,19 +59,35 @@
   });
 
   LW_TESTS.push({
-    name: 'kaiju: with no energy the moves are off and health drains 2 per second (AC 5)', game: 'kaiju',
+    name: 'kaiju: with no energy health drains 2 per second, and moves still work but cost health (AC 5)', game: 'kaiju',
     run(LW) {
       const K = begin(LW), G = LW.game;
       const b = LW.sceneryEntries.find(e => e.kind === 'building' && e.height > 0.5);
       const V = LW.V3, p0 = b.pos.clone().normalize(), f0 = new V(0, 1, 0).cross(p0).normalize(), ax = new V().crossVectors(p0, f0).normalize();
       G.p.copy(p0).applyAxisAngle(ax, -0.5 / b.pos.length()); G.f.copy(f0).applyAxisAngle(ax, -0.5 / b.pos.length());
+      noFood(LW, K);
       K.energy = 0;
-      K.stomp(); K.swipe(); K.roar();
-      if (b.destroyed) throw new Error('stomp worked with no energy');
-      if (K.roarWait > 0) throw new Error('roar worked with no energy');
+      K.stomp();
+      if (!b.destroyed) throw new Error('a hungry kaiju could not stomp: a dead end');
+      near(K.health, 98, 0.01, 'health after a starved stomp (5 x 0.4)');
+      K.roar();
+      if (!(K.roarWait > 9)) throw new Error('a hungry kaiju could not roar');
+      near(K.health, 92, 0.01, 'health after a starved roar (15 x 0.4)');
       const h = K.health; step(LW, 2);
       near(h - K.health, 4, 0.2, 'health lost in 2 s');
       if (K.energy !== 0) throw new Error('energy must stay at 0');
+      LW.games.quit();
+      return true;
+    }
+  });
+
+  LW_TESTS.push({
+    name: 'kaiju: a hungry kaiju never spends its last health on a move', game: 'kaiju',
+    run(LW) {
+      const K = begin(LW);
+      K.energy = 0; K.health = 1.5;
+      K.swipe();   // costs 4
+      near(K.health, 1.5, 0.01, 'health after a refused swipe');
       LW.games.quit();
       return true;
     }
@@ -237,6 +255,27 @@
         if (!T.eatBtn.hidden || !T.roarBtn.hidden) throw new Error('Raid shows the Kaiju buttons');
         LW.games.quit();
       } finally { T.forceShow = false; if (LW.game.active) LW.games.quit(); }
+      return true;
+    }
+  });
+
+  LW_TESTS.push({
+    name: 'kaiju: walking into a person or a car eats it without a key; the army is not eaten (AC 4)', game: 'kaiju',
+    run(LW) {
+      const K = begin(LW), G = LW.game;
+      const q = alive(K)[0]; put(q, ahead(LW, 0.4));
+      K.energy = 50; K.health = 50;
+      step(LW, 1 / 60);
+      if (q.alive) throw new Error('a person within 0.4 was not eaten on contact');
+      near(K.energy, 53 - 1 / 60, 0.1, 'energy after the free meal');
+      const far = alive(K)[0]; put(far, ahead(LW, 0.9));
+      step(LW, 1 / 60);
+      if (!far.alive) throw new Error('contact eating reached 0.9: that is the E reach');
+      K.army.auto = false;
+      const u = K.army.spawn('police'); const at = ahead(LW, 0.3); u.p.copy(at.p); u.f.copy(at.f); u.alive = true; u.mesh.visible = true; u.fireWait = 99;
+      step(LW, 1 / 60);
+      if (!u.alive) throw new Error('walking into a police car ate it');
+      LW.games.quit();
       return true;
     }
   });

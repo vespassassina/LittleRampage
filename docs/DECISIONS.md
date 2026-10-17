@@ -2,6 +2,16 @@
 
 Newest first.
 
+## 2026-10-17 Kaiju feedback round 2: zero energy, auto-eat, half size, trains on a ramp
+
+- Feedback: out of energy meant run and die; trains flew over cities; kaiju should eat people and cars; kaiju half the size.
+- Supersedes kaiju AC5 "moves are off at zero energy". At zero energy a move is paid in health
+  (stomp 2, roar 6, `STARVED_PRICE`), and refused when it would take the last health. Drain stays 2/s.
+- Walking into a person or a civilian car eats it (reach 0.6, `AUTO_EAT`). E still eats at full reach.
+- `KAIJU_SCALE` 0.33 (about half of before), `KAIJU_CAM` 0.55. Hit zones stay world-sized: the stomp disc is now wider than the body. Left as is.
+- Trains: the track climbs to the viaduct over 0.7 rad (`TRAIN_RAMP`) instead of a step, with thin pillars under raised parts.
+- Not checked: pillars at ground level from a close camera look like a fence in one orbit view.
+
 ## 2026-10-17 Sound: synthesised effects, a mute button, no music yet
 
 - Request: "add sound to the game". Read as effects, not music; assumption stated, music not built.

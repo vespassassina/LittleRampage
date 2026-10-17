@@ -24,10 +24,10 @@
   });
 
   LW_TESTS.push({
-    name: 'sound: nothing plays when a move is refused for lack of energy', game: 'kaiju',
+    name: 'sound: nothing plays when a move is refused (no energy and almost no health)', game: 'kaiju',
     run(LW) {
       try {
-        const K = begin(LW); K.energy = 0;
+        const K = begin(LW); K.energy = 0; K.health = 1;
         const a = heard(LW, () => { K.stomp(); K.swipe(); K.roar(); });
         if (a.some(n => ['stomp', 'swipe', 'roar'].includes(n))) throw new Error('played: ' + a);
       } finally { clean(LW); }

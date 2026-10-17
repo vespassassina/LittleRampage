@@ -658,6 +658,7 @@ const circle = (r, n = 72, dir = 1) => Array.from({ length: n }, (_, i) => {
 });
 
 // ---------- 3D track loop for trains (slerp-based, follows terrain) ----------
+const TRAIN_RAMP = 0.7;   // radians: about 10 units at R = 15; the viaduct is up to 3 units high, so a shorter ramp is a wall
 class TrainTrack {
   constructor(cities, order, lift = 0.015) {
     this.lift = lift;
@@ -671,7 +672,7 @@ class TrainTrack {
 
       // Determine interpolation steps: target 2-4° between waypoints
       const arcAngle = Math.acos(Math.max(-1, Math.min(1, dir1.dot(dir2))));
-      const stepsPerRadian = 3;  // ~3-4° per step for smooth curves
+      const stepsPerRadian = 8;  // finer than 3-4°: the ramp into a city needs several waypoints to look like a slope
       const numSteps = Math.max(8, Math.ceil(arcAngle * stepsPerRadian));
 
       for (let j = 0; j <= numSteps; j++) {
@@ -693,8 +694,13 @@ class TrainTrack {
         // Near a city, buildings extend up through the plateau (see skyFloor() and
         // its courier-game twin around line ~1957, same c.maxH clamp pattern);
         // raise the track to clear them like an elevated viaduct through the city.
+        // The rise is a ramp, not a step: it starts TRAIN_RAMP radians out, so the train climbs
+        // onto the viaduct instead of jumping into the sky at the city edge.
+        const ground = h;
         for (const c of cities) {
-          if (slerped.angleTo(c.dir) < c.cap + 0.08) h = Math.max(h, HC + c.maxH + 0.25);
+          const a = slerped.angleTo(c.dir) - (c.cap + 0.08);
+          const top = Math.max(ground, HC + c.maxH + 0.25);
+          h = Math.max(h, ground + (top - ground) * (1 - smooth(0, TRAIN_RAMP, a)));
         }
         const pos = slerped.multiplyScalar(h);
         this.waypoints.push(pos);
@@ -1064,6 +1070,7 @@ const HAMLETS = [];
 let currentCountrysideTreeCount = 0;
 const BOATS = [];   // sailing state per boat, replaced on a rebuild
 const RAIL = new THREE.BoxGeometry(0.06, 0.015, 0.04);  // thin rail strip
+const PILLAR = new THREE.BoxGeometry(0.05, 1, 0.05).translate(0, 0.5, 0);   // unit height: scaled to the gap under the track
 const BLADES = mergeGeometries([0, 1, 2].map(i =>
   new THREE.BoxGeometry(0.03, 0.24, 0.008).translate(0, 0.13, 0).rotateZ(i * Math.PI * 2 / 3)));
 const TOWER = new THREE.CylinderGeometry(0.03, 0.06, 0.5, 8).translate(0, 0.25, 0);
@@ -1178,6 +1185,14 @@ function buildTrainRail() {
 
     const railMat = frameAt(pos, up, fwd);
     world.add(RAIL, railMaterial, railMat, 0.01);
+  }
+  // Pillars under every stretch that is lifted off the ground, so it reads as an elevated railway.
+  const pillars = Math.ceil(trainTrack.total / 0.6);
+  for (let i = 0; i < pillars; i++) {
+    const pos = trainTrack.at((i / pillars) * trainTrack.total), up = pos.clone().normalize();
+    const ground = Math.max(heightAt(up), R) + 0.012, gap = pos.length() - ground - 0.05;   // +0.012: the city floor is that much above HC, so no pillar pokes through it
+    if (gap < 0.1) continue;
+    world.add(PILLAR, railMaterial, frameAt(up.clone().multiplyScalar(ground), up, new V3(0, 1, 0).cross(up).normalize(), 1, gap, 1), 0.01);
   }
 }
 
@@ -2183,11 +2198,11 @@ const ROSTER = Object.keys(KAIJU);
 const WALK = 0.7, KAIJU_TURN = 1.4, STOMP_AT = 0.5, STOMP_R = 0.5, SHALLOW = 0.3, LOW_PLANE = 1.5;
 const STOMP_GAP = 0.4, SWIPE_GAP = 0.6, KAIJU_BURSTS = 3;
 const COST = { stomp: 5, swipe: 10, roar: 15 }, ROAR_COOLDOWN = 10, ROAR_QUIET = 3, ROAR_FEAR = 5, STARVING = 2;
-const EAT_REACH = 1.0, EAT_GAP = 0.5, EAT_GAINS = { person: 3, car: 8, tank: 15, plane: 20 };   // energy; health gets a quarter
+const EAT_REACH = 1.0, AUTO_EAT = 0.6, EAT_GAP = 0.5, EAT_GAINS = { person: 3, car: 8, tank: 15, plane: 20 };   // energy; health gets a quarter
 const PEOPLE_PER_CITY = 24, PERSON_WALK = 0.15, PERSON_FLEE = 0.8, PERSON_PANIC = 1.1, FLEE_R = 2.2, PERSON_RESPAWN = 30;
-// The bodies are modelled 2 units tall; shown at this scale a kaiju stands a little above a house,
-// as in the arcade Rampage. The camera keeps almost its old distance, so the whole move fits on screen.
-const KAIJU_SCALE = 0.65, KAIJU_CAM = 0.95, STOMP_ANIM = 0.4, SWIPE_ANIM = 0.5;
+// The bodies are modelled 2.1 units tall; at this scale a kaiju stands about as tall as a house. It was
+// 0.65 and players still found it too big. The camera keeps over half its old distance, so a move fits on screen.
+const KAIJU_SCALE = 0.33, KAIJU_CAM = 0.55, STOMP_ANIM = 0.4, SWIPE_ANIM = 0.5;
 const SMASH = { house: 5, tree: 1, car: 5, plane: 40 };
 
 // Three bodies, each built once. +Z is forward. A run only recolours, resizes (±10%) and hides
@@ -2269,10 +2284,15 @@ function dress(model) {
 let stompAnim = 0, swipeAnim = 0;   // seconds left in the pose
 let kaijuRun = 'scalezor', kaijuClock = 0, stompWait = 0, swipeWait = 0, eatWait = 0, roarWait = 0, gait = 0;
 let kHealth = 0, kEnergy = 0, armyQuiet = 0, roarFear = 0;
-// Energy pays for moves; with none left they are off. Returns whether the move happens.
+// Energy pays for moves. Returns whether the move happens.
+// With none left a move still works, but it is paid for in health (STARVED_PRICE of the cost) - a hungry
+// kaiju that can only run and die was a dead end. It never pays with its last health: that move is refused.
+const STARVED_PRICE = 0.4;
 function spend(cost) {
-  if (kEnergy <= 0) return false;
-  kEnergy = Math.max(0, kEnergy - cost);
+  if (kEnergy > 0) { kEnergy = Math.max(0, kEnergy - cost); return true; }
+  const price = cost * STARVED_PRICE;
+  if (kHealth <= price) return false;
+  kHealth -= price;
   return true;
 }
 const _kp = new V3(), _kf = new V3(), _kc = new V3(), _kv = new V3(), _km = new THREE.Matrix4();
@@ -2376,8 +2396,9 @@ function stepPeople(dt, t) {
 }
 
 // Eat: the nearest person, car or low plane within reach goes in. Not scored: it is survival.
-function eat() {
-  let best = null, bestD = EAT_REACH / R;
+// `auto` is eating by walking into food: a shorter reach, and only people and civilian cars (never the army).
+function eat(reach = EAT_REACH, auto = false) {
+  let best = null, bestD = reach / R;
   const consider = (kind, at, take) => {
     const a = Math.acos(clamp(_kc.copy(at).normalize().dot(G.p), -1, 1));
     if (a < bestD) { bestD = a; best = { kind, at: _kv.copy(at), take }; }
@@ -2389,7 +2410,7 @@ function eat() {
     if (c.kind === 'plane' && at.length() - heightAt(_kc.copy(at).normalize()) > LOW_PLANE) continue;
     consider(c.kind, at, () => { c.alive = false; setCivilianShown(c, false); c.respawnAt = kaijuClock + CIVILIAN_RESPAWN; });
   }
-  for (const u of units) if (u.alive && u.kind !== 'jet') consider(u.kind === 'tank' ? 'tank' : 'car', _pv.copy(u.p).multiplyScalar(R + 0.1), () => killUnit(u));
+  if (!auto) for (const u of units) if (u.alive && u.kind !== 'jet') consider(u.kind === 'tank' ? 'tank' : 'car', _pv.copy(u.p).multiplyScalar(R + 0.1), () => killUnit(u));
   if (!best) return false;
   best.take();
   const gain = EAT_GAINS[best.kind];
@@ -2574,7 +2595,7 @@ function poseKaiju(dt) {
 GAMES.kaiju = {
   title: 'Kaiju', key: 'lw-kaiju-best', best: loadBest('lw-kaiju-best'), walks: true, chaseTarget: kaijuMesh,
   intro: 'You are Scalezor, a lizard as tall as a skyscraper. Wreck the city. ' +
-    '← → turn · ↑ ↓ walk · Space stomps in front · F swipes the tail behind · Esc quits.',
+    '← → turn · ↑ ↓ walk · Space stomps in front · F swipes the tail behind · E eats · R roars · Esc quits. Walk into people and cars to eat them: food gives energy and health.',
   start() {
     kaijuRun = chosenKaiju === 'random' ? ROSTER[Math.floor(Math.random() * ROSTER.length)] : chosenKaiju;
     kaijuModel = MODELS[kaijuRun];
@@ -2613,7 +2634,7 @@ GAMES.kaiju = {
       }
       if (k.has('fire') && stompWait <= 0) { stomp(); stompWait = STOMP_GAP; }
       if (k.has('swipe') && swipeWait <= 0) { swipe(); swipeWait = SWIPE_GAP; }
-      if (k.has('eat') && eatWait <= 0) { eat(); eatWait = K.eatGap ?? EAT_GAP; }
+      if (eatWait <= 0 && (k.has('eat') ? eat() : eat(AUTO_EAT, true))) eatWait = K.eatGap ?? EAT_GAP;   // E reaches far; walking into food eats it
       if (k.has('roar')) roar();
       kEnergy = Math.max(0, kEnergy - dt);   // the body burns 1 a second; at 0 it burns health
       if (kEnergy <= 0) damage(STARVING * dt);

@@ -282,3 +282,23 @@ LW_TESTS.push({
     return true;
   }
 });
+
+LW_TESTS.push({
+  name: 'trains: the track climbs onto the city viaduct on a ramp, never in one step',
+  run(LW) {
+    const wp = LW.trainTrack.waypoints;
+    let steepest = 0;
+    for (let i = 0; i < wp.length; i++) {
+      const a = wp[i], b = wp[(i + 1) % wp.length];
+      steepest = Math.max(steepest, Math.abs(b.length() - a.length()) / Math.max(1e-6, a.distanceTo(b)));
+    }
+    if (steepest > 0.6) throw new Error(`the track rises ${steepest.toFixed(2)} per unit: a jump, not a ramp`);
+    // a little way out of a city the track is already off the ground
+    const c = LW.CITIES[0], out = c.cap + 0.08 + 0.15;
+    const near = wp.filter(p => Math.abs(p.clone().normalize().angleTo(c.dir) - out) < 0.06);
+    if (!near.length) throw new Error('no waypoint on the approach to city 0');
+    const lifted = near.some(p => p.length() - Math.max(LW.heightAt(p.clone().normalize()), LW.R) > 0.1);
+    if (!lifted) throw new Error('the ramp has not started 0.15 rad out from the city');
+    return true;
+  }
+});

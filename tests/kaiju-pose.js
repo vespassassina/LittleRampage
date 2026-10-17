@@ -17,13 +17,13 @@
   const maxTurn = m => { let t = 0; m.traverse(o => { t = Math.max(t, Math.abs(o.rotation.x), Math.abs(o.rotation.y), Math.abs(o.rotation.z)); }); return t; };
 
   LW_TESTS.push({
-    name: 'kaiju pose: the body stands about as tall as a house, not a skyscraper', game: 'kaiju',
+    name: 'kaiju pose: the body stands about as tall as a house, half what it was', game: 'kaiju',
     run(LW) {
       try {
         for (const k of ['scalezor', 'bonkers', 'shellback']) {
           const K = play(LW, k), m = shown(K);
           const h = m.scale.y * 2.1;   // the bodies are modelled about 2.1 tall with their spikes
-          if (h > 1.7 || h < 0.9) throw new Error(`${k} is ${h.toFixed(2)} tall`);
+          if (h > 0.95 || h < 0.5) throw new Error(`${k} is ${h.toFixed(2)} tall`);
         }
       } finally { if (LW.game.active) LW.games.quit(); }
       return true;

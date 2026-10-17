@@ -81,10 +81,12 @@
       withSize(LW, 'large', () => {
         LW.trainTrack.waypoints.forEach((pos, i) => {
           const dir = pos.clone().normalize();
-          let want = LW.heightAt(dir) + LW.trainTrack.lift;
-          for (const c of LW.CITIES) if (dir.angleTo(c.dir) < c.cap + 0.08) want = Math.max(want, LW.HC + c.maxH + 0.25);
-          if (Math.abs(pos.length() - want) > 0.001) {
-            throw new Error(`large: track waypoint ${i} at radius ${pos.length().toFixed(3)}, ground wants ${want.toFixed(3)}`);
+          // on the ground, or on the ramp, or on the viaduct: never under the ground, never above the viaduct
+          const low = LW.heightAt(dir) + LW.trainTrack.lift;
+          let high = low;
+          for (const c of LW.CITIES) high = Math.max(high, LW.HC + c.maxH + 0.25);
+          if (pos.length() < low - 0.001 || pos.length() > high + 0.001) {
+            throw new Error(`large: track waypoint ${i} at radius ${pos.length().toFixed(3)}, allowed ${low.toFixed(3)} to ${high.toFixed(3)}`);
           }
         });
       });

@@ -1823,9 +1823,9 @@ const bursts = Array.from({ length: 10 }, () => {
   return { g, fire, word, age: 99, size: 1 };
 });
 let nextBurst = 0;
-function burst(pos, kind) {
+function burst(pos, kind, size) {
   const b = bursts[nextBurst]; nextBurst = (nextBurst + 1) % bursts.length;
-  b.g.position.copy(pos); b.g.visible = true; b.age = 0; b.size = kind === 'boom' ? 0.55 : 0.3;
+  b.g.position.copy(pos); b.g.visible = true; b.age = 0; b.size = size ?? (kind === 'boom' ? 0.55 : 0.3);
   b.word.material.map = WORD_TEX[pick(WORDS[kind])];
 }
 movers.push((t, dt) => {
@@ -2108,6 +2108,9 @@ const STOMP_GAP = 0.4, SWIPE_GAP = 0.6, KAIJU_BURSTS = 3;
 const COST = { stomp: 5, swipe: 10, roar: 15 }, ROAR_COOLDOWN = 10, ROAR_QUIET = 3, ROAR_FEAR = 5, STARVING = 2;
 const EAT_REACH = 1.0, EAT_GAP = 0.5, EAT_GAINS = { person: 3, car: 8, tank: 15, plane: 20 };   // energy; health gets a quarter
 const PEOPLE_PER_CITY = 24, PERSON_WALK = 0.15, PERSON_FLEE = 0.8, PERSON_PANIC = 1.1, FLEE_R = 2.2, PERSON_RESPAWN = 30;
+// The bodies are modelled 2 units tall; shown at this scale a kaiju stands a little above a house,
+// as in the arcade Rampage. The camera keeps almost its old distance, so the whole move fits on screen.
+const KAIJU_SCALE = 0.65, KAIJU_CAM = 0.95, STOMP_ANIM = 0.4, SWIPE_ANIM = 0.5;
 const SMASH = { house: 5, tree: 1, car: 5, plane: 40 };
 
 // Three bodies, each built once. +Z is forward. A run only recolours, resizes (±10%) and hides
@@ -2123,13 +2126,13 @@ function makeKaiju(build) {
     return pivot;
   };
   const eyes = (y, z) => [-0.18, 0.18].forEach(x => part(new THREE.BoxGeometry(0.1, 0.1, 0.06), mats.eye, x, y, z, 0.01));
-  g.userData = { mats, ...build({ part, leg, eyes, mats }) };
+  g.userData = { mats, ...build({ g, part, leg, eyes, mats }) };
   g.userData.plates.forEach(m => { m.userData.spike = true; });
   g.visible = false;
   return g;
 }
 const MODELS = {
-  scalezor: makeKaiju(({ part, leg, eyes, mats }) => {   // lizard, tail trailing behind
+  scalezor: makeKaiju(({ g, part, leg, eyes, mats }) => {   // lizard, tail trailing behind
     const legs = [leg(-0.24, 0.75, 0.3, 0.75, 0.34), leg(0.24, 0.75, 0.3, 0.75, 0.34)];
     part(new THREE.BoxGeometry(0.85, 0.85, 1.15), mats.body, 0, 1.2, 0);
     part(new THREE.BoxGeometry(0.6, 0.5, 0.9), mats.belly, 0, 1.05, 0.12, 0.02);
@@ -2138,24 +2141,27 @@ const MODELS = {
     eyes(1.7, 1.02);
     const plates = [];
     for (let i = 0; i < 5; i++) plates.push(part(new THREE.ConeGeometry(0.17 - i * 0.015, 0.34, 4), mats.plate, 0, 1.82 - i * 0.04, 0.45 - i * 0.28, 0.02));
-    for (let i = 0; i < 3; i++) { const w = 0.55 - i * 0.15; part(new THREE.BoxGeometry(w, w, 0.6), mats.body, 0, 1.0 - i * 0.12, -0.85 - i * 0.55); }
-    part(new THREE.ConeGeometry(0.16, 0.4, 4).rotateX(-Math.PI / 2), mats.plate, 0, 0.78, -2.6, 0.02);
-    return { legs, plates, chase: { off: new V3(0, 3.8, -5.5), look: new V3(0, 1, 1.5) } };   // behind and above, looking past the head
+    const tail = new THREE.Group(); tail.position.set(0, 1.0, -0.6); g.add(tail);   // pivots at the rump, so a swipe can whip it
+    for (let i = 0; i < 3; i++) { const w = 0.55 - i * 0.15; tail.attach(part(new THREE.BoxGeometry(w, w, 0.6), mats.body, 0, 1.0 - i * 0.12, -0.85 - i * 0.55)); }
+    tail.attach(part(new THREE.ConeGeometry(0.16, 0.4, 4).rotateX(-Math.PI / 2), mats.plate, 0, 0.78, -2.6, 0.02));
+    return { legs, tail, plates, chase: { off: new V3(0, 3.8, -5.5), look: new V3(0, 1, 1.5) } };   // behind and above, looking past the head
   }),
-  bonkers: makeKaiju(({ part, leg, eyes, mats }) => {   // ape: huge arms, small head, tufts
+  bonkers: makeKaiju(({ g, part, leg, eyes, mats }) => {   // ape: huge arms, small head, tufts
     const legs = [leg(-0.26, 0.6, 0.36, 0.6, 0.36), leg(0.26, 0.6, 0.36, 0.6, 0.36)];
     part(new THREE.BoxGeometry(1.1, 0.95, 0.8), mats.body, 0, 1.1, 0);
     part(new THREE.BoxGeometry(0.7, 0.6, 0.2), mats.belly, 0, 1.05, 0.38, 0.02);
-    for (const x of [-0.72, 0.72]) {
-      part(new THREE.BoxGeometry(0.28, 1.0, 0.3), mats.body, x, 1.05, 0.1);
-      part(new THREE.BoxGeometry(0.36, 0.3, 0.36), mats.plate, x, 0.5, 0.15, 0.02);   // the fists
-    }
+    const arms = [-0.72, 0.72].map(x => {   // each arm hangs from the shoulder, so a swipe can throw a punch
+      const sh = new THREE.Group(); sh.position.set(x, 1.5, 0.1); g.add(sh);
+      sh.attach(part(new THREE.BoxGeometry(0.28, 1.0, 0.3), mats.body, x, 1.05, 0.1));
+      sh.attach(part(new THREE.BoxGeometry(0.36, 0.3, 0.36), mats.plate, x, 0.5, 0.15, 0.02));   // the fists
+      return sh;
+    });
     part(new THREE.BoxGeometry(0.55, 0.5, 0.5), mats.body, 0, 1.75, 0.3);
     part(new THREE.BoxGeometry(0.36, 0.22, 0.2), mats.belly, 0, 1.68, 0.6, 0.02);
     eyes(1.85, 0.57);
     const plates = [];
     for (let i = 0; i < 6; i++) plates.push(part(new THREE.ConeGeometry(0.07, 0.22, 4), mats.plate, -0.2 + i * 0.08, 2.06, 0.25 - (i % 2) * 0.12, 0.01));
-    return { legs, plates, chase: { off: new V3(0, 3.6, -5), look: new V3(0, 1, 1.5) } };
+    return { legs, arms, plates, chase: { off: new V3(0, 3.6, -5), look: new V3(0, 1, 1.5) } };
   }),
   shellback: makeKaiju(({ part, leg, eyes, mats }) => {   // turtle: low, wide, a spiky shell
     const legs = [leg(-0.4, 0.45, 0.32, 0.45, 0.34), leg(0.4, 0.45, 0.32, 0.45, 0.34)];
@@ -2179,10 +2185,11 @@ function dress(model) {
   const hue = Math.random(), { mats, plates } = model.userData;
   mats.body.color.setHSL(hue, 0.5, 0.55); mats.belly.color.setHSL(hue, 0.55, 0.82); mats.plate.color.setHSL((hue + 0.5) % 1, 0.9, 0.6);
   const size = 0.9 + Math.random() * 0.2, spikes = plates.length - Math.floor(Math.random() * plates.length / 2);
-  model.scale.setScalar(size);
+  model.scale.setScalar(size * KAIJU_SCALE);
   plates.forEach((m, i) => { m.visible = i < spikes; });
   kaijuLook = { color: '#' + mats.body.color.getHexString(), size, spikes };
 }
+let stompAnim = 0, swipeAnim = 0;   // seconds left in the pose
 let kaijuRun = 'scalezor', kaijuClock = 0, stompWait = 0, swipeWait = 0, eatWait = 0, roarWait = 0, gait = 0;
 let kHealth = 0, kEnergy = 0, armyQuiet = 0, roarFear = 0;
 // Energy pays for moves; with none left they are off. Returns whether the move happens.
@@ -2195,7 +2202,7 @@ const _kp = new V3(), _kf = new V3(), _kc = new V3(), _kv = new V3(), _km = new 
 
 const smashPoints = e => e.kind === 'building' ? Math.round(10 * (e.height ?? 1)) : SMASH[e.kind] ?? 1;
 function smashAt(pos, bursts) {
-  if (bursts.n++ < KAIJU_BURSTS) burst(_kv.copy(pos).addScaledVector(_kc.copy(pos).normalize(), 0.3), 'boom');
+  if (bursts.n++ < KAIJU_BURSTS) burst(_kv.copy(pos).addScaledVector(_kc.copy(pos).normalize(), 0.3), 'boom', 0.28);   // small: the kaiju is only a little taller than a house
 }
 // Wrecks scenery and traffic where `inside(dir, dist)` says so; returns how many things went.
 // `dir` is the unit direction of the thing from the planet's centre.
@@ -2229,6 +2236,7 @@ function smash(inside, planes) {
 function stomp() {
   if (!spend(COST.stomp)) return 0;
   // a disc STOMP_R across, centred STOMP_AT in front of the feet
+  stompAnim = STOMP_ANIM;
   const a = STOMP_AT / R;
   const centre = new V3().copy(G.p).multiplyScalar(Math.cos(a)).addScaledVector(G.f, Math.sin(a));
   const cosT = Math.cos(STOMP_R / R);
@@ -2237,6 +2245,7 @@ function stomp() {
 }
 function swipe() {
   if (!spend(COST.swipe)) return 0;
+  swipeAnim = SWIPE_ANIM;
   const { reach, half, dir } = KAIJU[kaijuRun].swipe;
   const sf = new V3().copy(G.f).multiplyScalar(dir), cosR = Math.cos(reach / R);
   const arc = d => {
@@ -2463,6 +2472,26 @@ function placeKaiju() {
   _km.copy(frameAt(_kp.copy(G.p).multiplyScalar(h), G.p, G.f));
   _km.decompose(kaijuMesh.position, kaijuMesh.quaternion, kaijuMesh.scale);
 }
+// The pose for this frame: walking swings the legs; a stomp lifts the right foot and slams it;
+// a swipe whips the tail (Scalezor), throws both fists (Bonkers) or spins the shell (Shellback).
+function poseKaiju(dt) {
+  stompAnim = Math.max(0, stompAnim - dt); swipeAnim = Math.max(0, swipeAnim - dt);
+  const m = kaijuModel, { legs: [l, r], tail, arms } = m.userData;
+  l.rotation.x = Math.sin(gait) * 0.6; r.rotation.x = -Math.sin(gait) * 0.6;
+  m.rotation.set(0, 0, 0);
+  if (arms) { arms[0].rotation.x = -Math.sin(gait) * 0.5; arms[1].rotation.x = Math.sin(gait) * 0.5; }
+  if (tail) tail.rotation.y = Math.sin(gait * 0.5) * 0.15;   // a lazy sway
+  if (stompAnim > 0) {   // up for the first half, down for the second: the foot lands as the time runs out
+    const p = 1 - stompAnim / STOMP_ANIM, up = Math.sin(Math.min(p / 0.7, 1) * Math.PI * 0.5) * (1 - smooth(0.7, 1, p));
+    r.rotation.x = -1.4 * up; l.rotation.x = 0.2 * up; m.rotation.x = 0.12 * up;
+  }
+  if (swipeAnim > 0) {
+    const p = 1 - swipeAnim / SWIPE_ANIM, s = Math.sin(p * Math.PI);
+    if (kaijuRun === 'scalezor') { tail.rotation.y = (p < 0.5 ? -1 : 1) * 1.5 * s; m.rotation.y = -0.4 * (p < 0.5 ? -1 : 1) * s; }
+    else if (kaijuRun === 'bonkers') { arms[0].rotation.x = arms[1].rotation.x = -1.7 * s; m.rotation.x = 0.15 * s; }
+    else m.rotation.y = p * Math.PI * 2;
+  }
+}
 GAMES.kaiju = {
   title: 'Kaiju', key: 'lw-kaiju-best', best: loadBest('lw-kaiju-best'), walks: true, chaseTarget: kaijuMesh,
   intro: 'You are Scalezor, a lizard as tall as a skyscraper. Wreck the city. ' +
@@ -2471,8 +2500,9 @@ GAMES.kaiju = {
     kaijuRun = chosenKaiju === 'random' ? ROSTER[Math.floor(Math.random() * ROSTER.length)] : chosenKaiju;
     kaijuModel = MODELS[kaijuRun];
     for (const [k, m] of Object.entries(MODELS)) m.visible = k === kaijuRun;
-    dress(kaijuModel); kaijuMesh.userData.chase = kaijuModel.userData.chase;
-    kaijuClock = 0; stompWait = swipeWait = eatWait = roarWait = gait = 0;
+    dress(kaijuModel); const c0 = kaijuModel.userData.chase;
+    kaijuMesh.userData.chase = { off: c0.off.clone().multiplyScalar(KAIJU_CAM), look: c0.look.clone().multiplyScalar(KAIJU_SCALE) };
+    stompAnim = swipeAnim = 0; kaijuClock = 0; stompWait = swipeWait = eatWait = roarWait = gait = 0;
     kHealth = KAIJU[kaijuRun].health; kEnergy = 100; armyQuiet = roarFear = 0;
     peopleMesh.visible = unitShots.visible = true; people.forEach(spawnPerson);
     heat = maxHeat = 1; armyFill = ARMY_FILL; armyAuto = true; clearArmy();
@@ -2513,8 +2543,7 @@ GAMES.kaiju = {
     stepPeople(dt, kaijuClock);
     for (const c of civilians) if (!c.alive && kaijuClock >= c.respawnAt) { c.alive = true; setCivilianShown(c, true); }
     gait += walked * dt * 9;
-    const [l, r] = kaijuModel.userData.legs;
-    l.rotation.x = Math.sin(gait) * 0.6; r.rotation.x = -Math.sin(gait) * 0.6;
+    poseKaiju(dt);
     placeKaiju();
     hud.hp.style.width = 100 * kHealth / KAIJU[kaijuRun].health + '%'; hud.en.style.width = kEnergy + '%';
   },

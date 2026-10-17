@@ -2,6 +2,18 @@
 
 Newest first.
 
+## 2026-10-17 Kaiju: visible moves, smaller body
+
+- Report: "i cannot see stomping or tailing, the kaiju is too big". Guide: arcade Rampage, where
+  every attack is a clear pose and the monster is about as tall as the buildings.
+- Moves are now poses, stepped by `LW.frame(dt)`: stomp lifts the right foot and slams it (0.4 s);
+  swipe whips the tail (Scalezor, now a pivot), throws both fists (Bonkers, arms are pivots) or
+  spins the shell (Shellback), 0.5 s. Before, only the effect burst showed.
+- Body scale 0.65 (was 1.0, of a 2.1-unit model). The camera keeps 95% of its old distance, so the
+  whole move fits on screen; at 55% the tail filled the view. Kaiju smashes use a smaller burst
+  (0.28 vs 0.55): the full one hid the body.
+- Hit zones (reach, arc, stomp disc) are unchanged: they are world units, not body size.
+
 ## 2026-10-17 Kaiju froze the page on the first Play of a load
 
 - Cause: `kaijuRun` started as `null`. The game loop steps the active game under the start panel,

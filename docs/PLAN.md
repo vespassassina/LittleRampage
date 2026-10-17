@@ -145,7 +145,7 @@ Raised 2026-09-23 (second batch), needs design before building:
 
 ## Later
 - Frame-cost spot-check on a real low-end phone once the app is deployed (F1 review: AC 5 used a ×4 estimate on one machine)
-- Sound effects
+- Music (sound effects done 2026-10-17, see DECISIONS)
 - World randomizer: a Generate button rerolls the planet from a seed; the seed is shown
   and editable, so the same seed reproduces the same world. The seed drives all layers
   of the generation (terrain, cities, forests, etc.), not just one.

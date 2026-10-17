@@ -2183,7 +2183,7 @@ function dress(model) {
   plates.forEach((m, i) => { m.visible = i < spikes; });
   kaijuLook = { color: '#' + mats.body.color.getHexString(), size, spikes };
 }
-let kaijuRun = null, kaijuClock = 0, stompWait = 0, swipeWait = 0, eatWait = 0, roarWait = 0, gait = 0;
+let kaijuRun = 'scalezor', kaijuClock = 0, stompWait = 0, swipeWait = 0, eatWait = 0, roarWait = 0, gait = 0;
 let kHealth = 0, kEnergy = 0, armyQuiet = 0, roarFear = 0;
 // Energy pays for moves; with none left they are off. Returns whether the move happens.
 function spend(cost) {

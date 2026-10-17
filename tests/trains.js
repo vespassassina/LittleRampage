@@ -302,3 +302,22 @@ LW_TESTS.push({
     return true;
   }
 });
+
+LW_TESTS.push({
+  name: 'trains: over water the track is a bridge above the sea; on land it hugs the ground',
+  run(LW) {
+    let wet = 0, dry = 0;
+    for (const p of LW.trainTrack.waypoints) {
+      const up = p.clone().normalize(), h = LW.heightAt(up);
+      if (h <= LW.R) {
+        wet++;
+        if (p.length() < LW.R + 0.1) throw new Error(`track at ${p.length().toFixed(2)} is under or in the sea`);
+      } else if (!LW.CITIES.some(c => up.angleTo(c.dir) < c.cap + 0.08 + 0.7)) {
+        dry++;
+        if (p.length() - h > 0.2) throw new Error(`track floats ${(p.length() - h).toFixed(2)} above dry land away from cities`);
+      }
+    }
+    if (!wet) throw new Error('no waypoint over water: the check proves nothing on this seed');
+    return true;
+  }
+});

@@ -658,6 +658,7 @@ const circle = (r, n = 72, dir = 1) => Array.from({ length: n }, (_, i) => {
 });
 
 // ---------- 3D track loop for trains (slerp-based, follows terrain) ----------
+const BRIDGE_DECK = 0.18;   // deck height above sea level: the pillar gap (0.18 - 0.012 - 0.05) must clear the 0.1 skip in buildTrainRail
 const TRAIN_RAMP = 0.7;   // radians: about 10 units at R = 15; the viaduct is up to 3 units high, so a shorter ramp is a wall
 class TrainTrack {
   constructor(cities, order, lift = 0.015) {
@@ -696,6 +697,8 @@ class TrainTrack {
         // raise the track to clear them like an elevated viaduct through the city.
         // The rise is a ramp, not a step: it starts TRAIN_RAMP radians out, so the train climbs
         // onto the viaduct instead of jumping into the sky at the city edge.
+        // Over water the ground is the sea floor: the track crosses on a bridge deck above sea level.
+        if (heightAt(slerped) <= R) h = R + BRIDGE_DECK;
         const ground = h;
         for (const c of cities) {
           const a = slerped.angleTo(c.dir) - (c.cap + 0.08);

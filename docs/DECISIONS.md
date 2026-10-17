@@ -2,6 +2,13 @@
 
 Newest first.
 
+## 2026-10-17 Trains cross water on a bridge
+
+- Feedback: trains should run on land, and use bridges over water.
+- Cause: the track followed `heightAt`, which is the sea floor under water, so the rails dipped below the sea.
+- Where the ground is at or below sea level, the track sits at `R + BRIDGE_DECK` (0.18) with pillars down to the water. On land it still follows the ground. City viaducts unchanged.
+- Check: a track waypoint over water is never under R + 0.1; on dry land away from cities it stays within 0.2 of the ground.
+
 ## 2026-10-17 Kaiju feedback round 2: zero energy, auto-eat, half size, trains on a ramp
 
 - Feedback: out of energy meant run and die; trains flew over cities; kaiju should eat people and cars; kaiju half the size.
